@@ -85,7 +85,7 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
-          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9., -]+\))?!?: [a-z]'
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9., -]+\))?!?: [a-z0-9]'
           if printf '%s' "$TITLE" | grep -Eq "$pattern"; then
             echo "The title follows Conventional Commits."
           else
