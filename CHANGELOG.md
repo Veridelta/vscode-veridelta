@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.2 (2026-10-11)
+
+The extension registers `veridelta mcp` with VS Code's agent mode: one server, Veridelta,
+started with one `--root` per workspace folder and run in the first, so an agent in the
+Chat view gets Veridelta's six tools and reads nothing outside the workspace. The settings
+`veridelta.mcp.allowRowValues`, `veridelta.mcp.allowQueries`, and `veridelta.mcp.maxRows`
+map onto the server's flags and restart it when they change. Resolving the server fills in
+the installed Veridelta's version.
+
 ## v0.1.1 (2026-10-11)
 
 The command **Veridelta: Run comparison** runs the configuration in the active editor, or
