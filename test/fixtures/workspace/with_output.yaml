@@ -1,0 +1,7 @@
+primary_keys: [id]
+source:
+  path: legacy.csv
+target:
+  path: modern.csv
+output_path: out
+output_format: csv

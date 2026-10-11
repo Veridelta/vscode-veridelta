@@ -1,7 +1,7 @@
 {
   "name": "vscode-veridelta",
   "displayName": "Veridelta",
-  "description": "Validate a Veridelta configuration into the Problems panel.",
+  "description": "Validate a Veridelta configuration into the Problems panel, and run a comparison and open its report.",
   "version": "0.1.0",
   "publisher": "veridelta",
   "license": "Apache-2.0",
@@ -37,6 +37,11 @@
         "command": "veridelta.validate",
         "title": "Validate configuration",
         "category": "Veridelta"
+      },
+      {
+        "command": "veridelta.run",
+        "title": "Run comparison",
+        "category": "Veridelta"
       }
     ],
     "configuration": {
@@ -51,6 +56,15 @@
             "veridelta"
           ],
           "markdownDescription": "The words that run Veridelta. A project that runs it through uv sets `[\"uv\", \"run\", \"veridelta\"]`. The command runs in the configuration file's folder."
+        },
+        "veridelta.run.htmlMaxRows": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0,
+          "markdownDescription": "Rows per table in the HTML report, passed as `--html-max-rows`. Unset, Veridelta's default of 1000 applies."
         }
       }
     },

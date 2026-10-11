@@ -10,6 +10,8 @@
  * object every command prints at exit code 3.
  */
 
+import { isRecord, parseJson, readErrorReport, type ErrorReport } from "./output";
+
 /** One step of a path into the configuration: a key, or an index into a list. */
 export type Step = string | number;
 
@@ -37,12 +39,6 @@ export interface ValidationReport {
   findings?: Finding[];
 }
 
-/** The object every command prints at exit code 3. */
-export interface ErrorReport {
-  type: string;
-  message: string;
-}
-
 /** The command's output, read by its exit code. */
 export type Parsed =
   | { kind: "report"; report: ValidationReport }
@@ -54,10 +50,6 @@ export interface Problem {
   severity: "error" | "warning";
   message: string;
   location: FindingLocation | undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -121,23 +113,12 @@ function readFinding(value: unknown): Finding | undefined {
  * before 0.36.0, still reads.
  */
 export function parseOutput(stdout: string, code: number | null): Parsed {
-  let value: unknown;
-  try {
-    value = JSON.parse(stdout);
-  } catch {
-    return { kind: "unparsable" };
-  }
-  if (!isRecord(value)) {
-    return { kind: "unparsable" };
-  }
+  const value = parseJson(stdout);
   if (code === 3) {
-    const { error } = value;
-    if (isRecord(error) && typeof error.type === "string" && typeof error.message === "string") {
-      return { kind: "error", error: { type: error.type, message: error.message } };
-    }
-    return { kind: "unparsable" };
+    const error = readErrorReport(value);
+    return error === undefined ? { kind: "unparsable" } : { kind: "error", error };
   }
-  if (code !== 0 && code !== 1) {
+  if ((code !== 0 && code !== 1) || !isRecord(value)) {
     return { kind: "unparsable" };
   }
   const { config, valid, errors, warnings, findings } = value;

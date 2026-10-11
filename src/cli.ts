@@ -29,6 +29,20 @@ export class CommandNotFound extends Error {
   }
 }
 
+/** The run was cancelled: its process was ended before it finished. */
+export class RunCancelled extends Error {
+  constructor() {
+    super("The Veridelta run was cancelled.");
+    this.name = "RunCancelled";
+  }
+}
+
+/** How to run the command: which words, and a signal that ends the process early. */
+export interface RunOptions {
+  command?: string[];
+  signal?: AbortSignal;
+}
+
 const DEFAULT_COMMAND = "veridelta";
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
@@ -46,18 +60,23 @@ export function configuredCommand(): string[] {
  *
  * A non-zero exit code is a result, not an error: `validate` exits 1 on an
  * error finding and 3 when it cannot finish, and each prints JSON to read.
+ * Aborting the signal ends the process, and the promise rejects with
+ * `RunCancelled`.
  */
-export function runVeridelta(
-  args: string[],
-  cwd: string,
-  command: string[] = configuredCommand(),
-): Promise<Finished> {
-  const [program = DEFAULT_COMMAND, ...leading] = command;
+export function runVeridelta(args: string[], cwd: string, options: RunOptions = {}): Promise<Finished> {
+  const [program = DEFAULT_COMMAND, ...leading] = options.command ?? configuredCommand();
+  const { signal } = options;
   return new Promise((resolve, reject) => {
     execFile(
       program,
       [...leading, ...args],
-      { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT_BYTES, windowsHide: true },
+      {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: MAX_OUTPUT_BYTES,
+        windowsHide: true,
+        ...(signal === undefined ? {} : { signal }),
+      },
       (error, stdout, stderr) => {
         if (error === null) {
           resolve({ stdout, stderr, code: 0 });
@@ -65,6 +84,8 @@ export function runVeridelta(
           resolve({ stdout, stderr, code: error.code });
         } else if (error.code === "ENOENT") {
           reject(new CommandNotFound(program));
+        } else if (error.code === "ABORT_ERR" || signal?.aborted === true) {
+          reject(new RunCancelled());
         } else if (error.code === undefined || error.code === null) {
           resolve({ stdout, stderr, code: null });
         } else {
@@ -76,12 +97,9 @@ export function runVeridelta(
 }
 
 /** Return what `veridelta --version` prints, or undefined when the command cannot run or fails. */
-export async function cliVersion(
-  cwd: string,
-  command: string[] = configuredCommand(),
-): Promise<string | undefined> {
+export async function cliVersion(cwd: string, options: RunOptions = {}): Promise<string | undefined> {
   try {
-    const finished = await runVeridelta(["--version"], cwd, command);
+    const finished = await runVeridelta(["--version"], cwd, options);
     return finished.code === 0 ? finished.stdout.trim() : undefined;
   } catch {
     return undefined;

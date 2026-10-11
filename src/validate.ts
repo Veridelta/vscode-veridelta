@@ -11,14 +11,9 @@ import * as vscode from "vscode";
 
 import { cliVersion, CommandNotFound, runVeridelta, type Finished } from "./cli";
 import { rangeFor } from "./locate";
+import { logStderr, messageOf, offerSettings, type Surfaces } from "./notify";
 import { parseOutput, problemsOf, type Problem } from "./report";
 import { isAtLeast, LOCATIONS_VERSION, MINIMUM_VERSION, parseVersion } from "./version";
-
-/** Where the command's problems and output go. */
-export interface Surfaces {
-  diagnostics: vscode.DiagnosticCollection;
-  output: vscode.OutputChannel;
-}
 
 const SOURCE = "veridelta";
 
@@ -34,19 +29,6 @@ function toDiagnostic(text: string, problem: Problem): vscode.Diagnostic {
   );
   diagnostic.source = SOURCE;
   return diagnostic;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** Offer the settings editor when the command is not on PATH. */
-async function offerSettings(message: string): Promise<void> {
-  const open = "Open settings";
-  const choice = await vscode.window.showErrorMessage(message, open);
-  if (choice === open) {
-    await vscode.commands.executeCommand("workbench.action.openSettings", "veridelta.command");
-  }
 }
 
 /** Say once why every problem sits on the first line: the installed Veridelta predates locations. */
@@ -113,11 +95,7 @@ export async function validateDocument(
     }
     return [];
   }
-  for (const line of finished.stderr.split(/\r?\n/)) {
-    if (line.length > 0) {
-      surfaces.output.appendLine(line);
-    }
-  }
+  logStderr(surfaces.output, finished.stderr);
   const parsed = parseOutput(finished.stdout, finished.code);
   if (parsed.kind === "unparsable") {
     const detail = finished.stderr.trim() || finished.stdout.trim() || `exit code ${String(finished.code)}`;
