@@ -1,6 +1,6 @@
 # Veridelta for VS Code
 
-Validate a [Veridelta](https://veridelta.github.io/veridelta/) configuration and run its comparison without leaving the editor. Each error and warning lands in the Problems panel, on the line that causes it, and a run ends in a verdict with the report and the discrepancy files one click away.
+Validate a [Veridelta](https://veridelta.github.io/veridelta/) configuration, run its comparison, and hand `veridelta mcp` to agent mode without leaving the editor. Each error and warning lands in the Problems panel, on the line that causes it; a run ends in a verdict with the report and the discrepancy files one click away; and an agent in the Chat view gets Veridelta's tools, held to the workspace's folders.
 
 ## Install
 
@@ -26,20 +26,23 @@ Run **Veridelta: Run comparison** from the Command Palette. It takes the configu
 
 The report is written under the extension's storage, so the workspace stays clean. The discrepancy files go where the configuration says, as on the command line. CSV, JSON, and NDJSON open as text; Parquet and Arrow are shown in the Explorer with a hint naming `output_format: csv`. A configuration without `output_path` writes no discrepancy files, and the button says so.
 
+## Agent mode
+
+The extension registers `veridelta mcp` as an MCP server with VS Code's agent mode, so an agent in the Chat view can validate a configuration, run a comparison, and read the rows that differ through the six tools the [AI agents](https://veridelta.github.io/veridelta/agents/) page lists. The server starts with one `--root` per workspace folder, runs in the first, and reads nothing outside them. It appears as "Veridelta" under **MCP: List Servers**. Three settings map onto its flags, and a change restarts it: `veridelta.mcp.allowRowValues`, `veridelta.mcp.allowQueries`, and `veridelta.mcp.maxRows`. Row values stay off until you turn them on, so an agent sees counts, columns, and keys only.
+
 ## Settings
 
 | Setting | Default | Meaning |
 | :--- | :--- | :--- |
 | `veridelta.command` | `["veridelta"]` | The words that run Veridelta. A project that runs it through uv sets `["uv", "run", "veridelta"]`. On macOS the extension host's PATH can differ from a terminal's, and this setting is the fix. |
 | `veridelta.run.htmlMaxRows` | unset | Rows per table in the HTML report, passed as `--html-max-rows`. Unset, Veridelta's default of 1000 applies. |
+| `veridelta.mcp.allowRowValues` | `false` | Let the agent's tools return values from the data, as `--allow-row-values` does. |
+| `veridelta.mcp.allowQueries` | `false` | Let a tool run a side's query as written, as `--allow-queries` does. |
+| `veridelta.mcp.maxRows` | `50` | The most rows, or value map entries, one tool call returns, as `--max-rows` sets it. |
 
 ## Schema
 
 With the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) installed, files named `veridelta*.yaml` get Veridelta's published schema: completion, hover text, and a mark on a misspelt key as you type. Without it, nothing changes.
-
-## What comes next
-
-Registration of `veridelta mcp` with agent mode. The plan is in [issue 127](https://github.com/Veridelta/veridelta/issues/127) of the Veridelta repository.
 
 ## License
 

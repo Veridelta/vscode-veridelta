@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Veridelta extension: commands that validate a configuration into the Problems panel and run a comparison.
+ * The Veridelta extension: commands that validate a configuration and run a comparison, and the MCP server for agent mode.
  *
  * `activate` returns the pieces the integration tests drive, so a test runs the
  * same code the commands do without the Command Palette.
@@ -12,6 +12,7 @@ import * as vscode from "vscode";
 
 import type { ArtifactPlan } from "./artifacts";
 import { pickConfiguration } from "./configPicker";
+import { registerMcpProvider, type VerideltaMcpProvider } from "./mcp";
 import type { Surfaces } from "./notify";
 import { openArtifacts, openReportOf, runComparison, type RunOutcome } from "./run";
 import { validateDocument } from "./validate";
@@ -23,6 +24,8 @@ export interface Api {
   openReport(outcome: RunOutcome): Promise<vscode.WebviewPanel>;
   openArtifacts(plan: ArtifactPlan | undefined): Promise<string[]>;
   diagnostics: vscode.DiagnosticCollection;
+  /** The provider agent mode asks for the Veridelta server. */
+  mcpProvider: VerideltaMcpProvider;
 }
 
 export function activate(context: vscode.ExtensionContext): Api {
@@ -31,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     output: vscode.window.createOutputChannel("Veridelta"),
   };
   context.subscriptions.push(surfaces.diagnostics, surfaces.output);
+  const mcpProvider = registerMcpProvider(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("veridelta.validate", async () => {
@@ -62,6 +66,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     openReport: openReportOf,
     openArtifacts,
     diagnostics: surfaces.diagnostics,
+    mcpProvider,
   };
 }
 
