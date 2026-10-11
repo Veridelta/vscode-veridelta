@@ -2,19 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Veridelta extension: a command that validates the open configuration into the Problems panel.
+ * The Veridelta extension: commands that validate a configuration into the Problems panel and run a comparison.
  *
  * `activate` returns the pieces the integration tests drive, so a test runs the
- * same code the command does without the Command Palette.
+ * same code the commands do without the Command Palette.
  */
 
 import * as vscode from "vscode";
 
-import { validateDocument, type Surfaces } from "./validate";
+import type { ArtifactPlan } from "./artifacts";
+import { pickConfiguration } from "./configPicker";
+import type { Surfaces } from "./notify";
+import { openArtifacts, openReportOf, runComparison, type RunOutcome } from "./run";
+import { validateDocument } from "./validate";
 
 /** What `activate` hands back, for tests. */
 export interface Api {
   validateDocument(document: vscode.TextDocument): Promise<vscode.Diagnostic[]>;
+  runComparison(uri: vscode.Uri): Promise<RunOutcome | undefined>;
+  openReport(outcome: RunOutcome): Promise<vscode.WebviewPanel>;
+  openArtifacts(plan: ArtifactPlan | undefined): Promise<string[]>;
   diagnostics: vscode.DiagnosticCollection;
 }
 
@@ -36,6 +43,10 @@ export function activate(context: vscode.ExtensionContext): Api {
       }
       await validateDocument(editor.document, surfaces);
     }),
+    vscode.commands.registerCommand("veridelta.run", async () => {
+      const uri = await pickConfiguration();
+      return uri === undefined ? undefined : runComparison(uri, context, surfaces);
+    }),
   );
 
   // A problem goes when its file closes, as the panel's other sources behave.
@@ -47,6 +58,9 @@ export function activate(context: vscode.ExtensionContext): Api {
 
   return {
     validateDocument: (document) => validateDocument(document, surfaces),
+    runComparison: (uri) => runComparison(uri, context, surfaces),
+    openReport: openReportOf,
+    openArtifacts,
     diagnostics: surfaces.diagnostics,
   };
 }
