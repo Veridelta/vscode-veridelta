@@ -1,0 +1,4 @@
+# Every text file is LF on every checkout, so Prettier and the tests see the same bytes on Windows.
+* text=auto eol=lf
+*.vsix binary
+*.png binary
