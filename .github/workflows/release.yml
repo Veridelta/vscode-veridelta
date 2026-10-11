@@ -5,14 +5,61 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    tags:
+      # Only a full version tag releases. GitHub's filter treats `+` as "one or
+      # more", so a looser tag cannot start a release by matching `v*`.
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  # Run on a version tag to retry a release that stopped partway.
+  workflow_dispatch:
+
+# Runs for one ref take turns, so two merges never race to make one tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  tag:
+    name: Tag the merged version
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # push the version tag
+      actions: write # start this workflow on that tag
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag the version when no tag names it yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          # The last line is the peeled commit of an annotated tag.
+          existing="$(git ls-remote --tags origin "refs/tags/${tag}" "refs/tags/${tag}^{}" | tail -n 1 | cut -f 1)"
+          if [ -n "$existing" ]; then
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::notice::${tag} is on ${existing}, so that commit is released as ${version}."
+            fi
+            echo "${tag} exists, so its release run is not started again."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/${tag}"
+          # A tag pushed with this job's token starts no workflow, but a
+          # dispatch does, so start the release run on the tag.
+          gh workflow run release.yml --ref "$tag"
+
   release:
     name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

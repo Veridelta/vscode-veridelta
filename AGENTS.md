@@ -20,7 +20,7 @@ This is the VS Code extension for [Veridelta](https://github.com/Veridelta/verid
 
 - One idea per pull request. The title follows Conventional Commits, and the summary names the use case or says it is maintenance.
 - `CHANGELOG.md` and the version in `package.json` change only in a release pull request.
-- A release is a tag `v<version>` on `main`; the workflow attaches the `.vsix`. Nothing is published to the Marketplace yet.
+- A release pull request sets the version and the changelog. On merge, the Release workflow tags `main` `v<version>` and attaches the `.vsix` to a GitHub pre-release. Nothing is published to the Marketplace yet.
 - Every `.ts` and `.mjs` file starts with the copyright and SPDX lines the others carry.
 - Never commit a model id, an email address, or a credential.
 - Writing, in code comments and documents alike: no dashes, sentence case, short sentences, present tense, no marketing words.
