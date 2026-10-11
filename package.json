@@ -1,7 +1,7 @@
 {
   "name": "vscode-veridelta",
   "displayName": "Veridelta",
-  "description": "Validate a Veridelta configuration into the Problems panel, and run a comparison and open its report.",
+  "description": "Validate a Veridelta configuration into the Problems panel, run a comparison and open its report, and register veridelta mcp with agent mode.",
   "version": "0.1.1",
   "publisher": "veridelta",
   "license": "Apache-2.0",
@@ -65,6 +65,22 @@
           "default": null,
           "minimum": 0,
           "markdownDescription": "Rows per table in the HTML report, passed as `--html-max-rows`. Unset, Veridelta's default of 1000 applies."
+        },
+        "veridelta.mcp.allowRowValues": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Let the agent's tools return values from the data, as `veridelta mcp --allow-row-values` does. Off, an agent sees counts, columns, and keys only."
+        },
+        "veridelta.mcp.allowQueries": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Let a tool run a side's query as written, as `veridelta mcp --allow-queries` does."
+        },
+        "veridelta.mcp.maxRows": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 1,
+          "markdownDescription": "The most rows, or value map entries, one tool call returns, as `veridelta mcp --max-rows` sets it."
         }
       }
     },
@@ -74,6 +90,12 @@
           "**/veridelta*.yaml"
         ],
         "url": "https://veridelta.github.io/veridelta/schema/veridelta.schema.json"
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "veridelta.mcp",
+        "label": "Veridelta"
       }
     ]
   },
