@@ -2,7 +2,7 @@
   "name": "vscode-veridelta",
   "displayName": "Veridelta",
   "description": "Validate a Veridelta configuration into the Problems panel, and run a comparison and open its report.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "veridelta",
   "license": "Apache-2.0",
   "homepage": "https://veridelta.github.io/veridelta/",
