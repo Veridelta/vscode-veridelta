@@ -1,0 +1,101 @@
+{
+  "name": "vscode-veridelta",
+  "displayName": "Veridelta",
+  "description": "Validate a Veridelta configuration into the Problems panel.",
+  "version": "0.1.0",
+  "publisher": "veridelta",
+  "license": "Apache-2.0",
+  "homepage": "https://veridelta.github.io/veridelta/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Veridelta/vscode-veridelta.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Veridelta/vscode-veridelta/issues"
+  },
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Linters",
+    "Data Science"
+  ],
+  "keywords": [
+    "veridelta",
+    "data",
+    "reconciliation",
+    "yaml",
+    "validation"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "veridelta.validate",
+        "title": "Validate configuration",
+        "category": "Veridelta"
+      }
+    ],
+    "configuration": {
+      "title": "Veridelta",
+      "properties": {
+        "veridelta.command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "veridelta"
+          ],
+          "markdownDescription": "The words that run Veridelta. A project that runs it through uv sets `[\"uv\", \"run\", \"veridelta\"]`. The command runs in the configuration file's folder."
+        }
+      }
+    },
+    "yamlValidation": [
+      {
+        "fileMatch": [
+          "**/veridelta*.yaml"
+        ],
+        "url": "https://veridelta.github.io/veridelta/schema/veridelta.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build -- --production",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "build:tests": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{ts,mjs,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,mjs,json}\"",
+    "check": "npm run lint && npm run format:check && npm run typecheck",
+    "pretest": "npm run build && npm run build:tests",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "mocha \"out/test/unit/**/*.test.js\"",
+    "test:integration": "vscode-test",
+    "package": "vsce package --pre-release --no-dependencies"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.101.0",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "mocha": "12.0.3",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1"
+  }
+}

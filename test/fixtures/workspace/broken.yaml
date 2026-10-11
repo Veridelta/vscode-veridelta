@@ -1,0 +1,6 @@
+primary_keys: [id]
+source:
+  path: legacy.csv
+  format: parquett
+target:
+  path: modern.csv
