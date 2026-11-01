@@ -16,9 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The Veridelta the tests run against: the commit tagged v0.36.0. PyPI carries the
-  # release once its publish run is approved; until then the tag's commit is the pin.
-  VERIDELTA_SPEC: "veridelta @ git+https://github.com/Veridelta/veridelta@26fd5d5dcc7156bb51f70d75cd389d25b10cfc4c"
+  # The Veridelta the tests run against, from PyPI. Before a release's publish run is
+  # approved, pin the commit its tag names instead, as `veridelta @ git+https://...@<sha>`.
+  VERIDELTA_SPEC: "veridelta==0.42.1"
 
 jobs:
   test:
