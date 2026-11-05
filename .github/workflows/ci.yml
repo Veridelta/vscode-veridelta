@@ -18,7 +18,7 @@ concurrency:
 env:
   # The Veridelta the tests run against, from PyPI. Before a release's publish run is
   # approved, pin the commit its tag names instead, as `veridelta @ git+https://...@<sha>`.
-  VERIDELTA_SPEC: "veridelta==0.42.1"
+  VERIDELTA_SPEC: "veridelta==0.42.2"
 
 jobs:
   test:
