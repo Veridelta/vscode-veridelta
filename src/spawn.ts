@@ -157,6 +157,11 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       endTree(child, false);
       forceTimer = setTimeout(() => {
         endTree(child, true);
+        // A process that left the group can still hold the output pipes, and
+        // 'close' waits for every holder. The tree is being ended, so stop
+        // waiting for it.
+        child.stdout?.destroy();
+        child.stderr?.destroy();
       }, graceMs);
     };
     const onAbort = (): void => {

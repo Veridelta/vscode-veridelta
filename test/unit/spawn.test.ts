@@ -131,6 +131,58 @@ describe("runProgram", function () {
     await until(() => !alive(child), "the child is gone", 3000);
   });
 
+  /** A wrapper whose child leaves its process group but keeps the wrapper's stdout. */
+  function escapedChild(pidFile: string): string[] {
+    const grandchild = `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30000);`;
+    const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(grandchild)}], { stdio: "inherit", detached: true }); process.stdout.write("x".repeat(64)); setInterval(() => {}, 1000);`;
+    return ["-e", wrapper];
+  }
+
+  it("settles a stopped run even when a process outside its group holds its output", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    for (const stop of ["cancel", "timeout", "size"] as const) {
+      const pidFile = path.join(folder, `${stop}.pid`);
+      const controller = new AbortController();
+      const started = Date.now();
+      const running = runProgram(NODE, escapedChild(pidFile), {
+        cwd: folder,
+        graceMs: 300,
+        ...(stop === "cancel" ? { signal: controller.signal } : {}),
+        ...(stop === "timeout" ? { timeoutMs: 1000 } : {}),
+        ...(stop === "size" ? { maxBytes: 16 } : {}),
+      });
+      await until(
+        () => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "",
+        "the child starts",
+      );
+      controller.abort();
+      await assert.rejects(running);
+      assert.ok(Date.now() - started < 5000, `${stop} settled in ${String(Date.now() - started)} ms`);
+      process.kill(Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL");
+    }
+  });
+
+  it("gives a child in the group its grace period when the wrapper dies first", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const done = path.join(folder, "cleaned");
+    const child = `process.on("SIGTERM", () => setTimeout(() => { require("fs").writeFileSync(${JSON.stringify(done)}, "1"); process.exit(0); }, 500)); setInterval(() => {}, 1000);`;
+    const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(child)}], { stdio: "inherit" }); setInterval(() => {}, 1000);`;
+    const controller = new AbortController();
+    const running = runProgram(NODE, ["-e", wrapper], {
+      cwd: folder,
+      signal: controller.signal,
+      graceMs: 3000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    controller.abort();
+    await assert.rejects(running, RunCancelled);
+    assert.ok(fs.existsSync(done), "the child finished its cleanup before the tree was killed");
+  });
+
   it("ends a run that prints more than it may keep", async () => {
     await assert.rejects(
       runProgram(NODE, ["-e", 'process.stdout.write("x".repeat(4096)); setInterval(() => {}, 1000)'], {
