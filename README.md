@@ -18,7 +18,7 @@ The extension runs the `veridelta` command, so [install Veridelta](https://verid
 
 Open a configuration file, such as `veridelta.yaml`, and run **Veridelta: Validate configuration** from the Command Palette. The Problems panel lists each finding with the source `veridelta`. Select one to jump to the setting it names. The command's own output, verdict included, is in the Output panel under "Veridelta".
 
-A document with unsaved changes is saved first, because Veridelta reads the file from disk. The command runs in the file's folder, so relative paths in the configuration resolve as they do on the command line.
+A document with unsaved changes is saved first, because Veridelta reads the file from disk. The command runs in the file's folder, so relative paths in the configuration resolve as they do on the command line. A progress notification can cancel it, and a validate that gives no result clears the file's problems, so the panel never shows problems from an older version of the file.
 
 ## Run a comparison
 

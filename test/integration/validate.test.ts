@@ -55,6 +55,35 @@ describe("Veridelta: Validate configuration", function () {
     assert.equal(diagnostics[0]?.severity, vscode.DiagnosticSeverity.Error);
   });
 
+  it("clears the problems when a later validate cannot start", async () => {
+    const document = await openFixture("broken.yaml");
+    const api = await extension();
+    assert.equal((await api.validateDocument(document)).length, 1);
+    const configuration = vscode.workspace.getConfiguration("veridelta");
+    await configuration.update(
+      "command",
+      ["veridelta-not-installed-here"],
+      vscode.ConfigurationTarget.Workspace,
+    );
+    try {
+      assert.deepEqual(await api.validateDocument(document), []);
+      assert.deepEqual(vscode.languages.getDiagnostics(document.uri), []);
+    } finally {
+      await configuration.update("command", undefined, vscode.ConfigurationTarget.Workspace);
+    }
+  });
+
+  it("keeps only the newest of two validates of one file", async () => {
+    const document = await openFixture("broken.yaml");
+    const api = await extension();
+    api.diagnostics.delete(document.uri);
+    const older = api.validateDocument(document);
+    const newer = api.validateDocument(document);
+    assert.deepEqual(await older, [], "the older validate gives way");
+    assert.equal((await newer).length, 1);
+    assert.equal(vscode.languages.getDiagnostics(document.uri).length, 1);
+  });
+
   it("runs from the Command Palette on the active editor", async () => {
     const document = await openFixture("broken.yaml");
     await vscode.window.showTextDocument(document);
