@@ -8,7 +8,6 @@ import * as path from "node:path";
 import {
   DEFAULT_MAX_ROWS,
   DEFAULT_SETTINGS,
-  hasAllowHost,
   maxRowsOf,
   MOST_MAX_ROWS,
   HOST_PATTERN,
@@ -16,7 +15,6 @@ import {
   serverCommand,
   splitHosts,
   takesAllowHost,
-  withoutAllowHost,
 } from "../../src/mcpArgs";
 
 describe("serverCommand", () => {
@@ -89,13 +87,6 @@ describe("allowed hosts on an older Veridelta", () => {
     assert.equal(takesAllowHost("  --allow-row-values  Let ...\n  --allow-queries  Let ..."), false);
     assert.equal(takesAllowHost("  --allow-host HOST  A host a side may connect to"), true);
     assert.equal(takesAllowHost("  --allow-hosts LIST"), false);
-  });
-
-  it("finds and drops the hosts and nothing else", () => {
-    const args = ["run", "veridelta", "mcp", "--root", "/a", "--allow-host=db.internal", "--max-rows", "5"];
-    assert.equal(hasAllowHost(args), true);
-    assert.deepEqual(withoutAllowHost(args), ["run", "veridelta", "mcp", "--root", "/a", "--max-rows", "5"]);
-    assert.equal(hasAllowHost(withoutAllowHost(args)), false);
   });
 });
 

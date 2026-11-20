@@ -11,13 +11,11 @@ import * as vscode from "vscode";
 
 import { cliVersion, configuredCommand, runVeridelta } from "./cli";
 import {
-  hasAllowHost,
   maxRowsOf,
   rootFolders,
   serverCommand,
   splitHosts,
   takesAllowHost,
-  withoutAllowHost,
   type McpSettings,
 } from "./mcpArgs";
 import { showWarning } from "./notify";
@@ -28,8 +26,14 @@ export const PROVIDER_ID = "veridelta.mcp";
 
 const LABEL = "Veridelta";
 
-/** Whether this session has already said that the installed Veridelta does not take `--allow-host`. */
-let warnedAboutAllowHost = false;
+/** How long a probe of the installed Veridelta may take before the server starts without its answer. */
+const PROBE_TIMEOUT_MS = 15_000;
+
+/** Whether the installed Veridelta takes `--allow-host`, as far as a probe of its help could tell. */
+type HostSupport = "takes" | "lacks" | "unknown";
+
+/** Whether this session has already said what the installed Veridelta does not hold. */
+let warnedAboutOlder = false;
 
 /** The allowHosts entries this session has already named as left out. */
 let namedDropped = "";
@@ -77,8 +81,13 @@ function isFolder(folder: string): boolean {
   }
 }
 
-/** The server for the open workspace, or undefined when no folder on disk is there. */
-export function currentDefinition(): vscode.McpStdioServerDefinition | undefined {
+/**
+ * The server for the open workspace, or undefined when no folder on disk is there.
+ *
+ * @param withHosts Whether to pass the hosts the settings allow, which only a
+ *   Veridelta known to take `--allow-host` gets, since another refuses to start.
+ */
+export function currentDefinition(withHosts: boolean): vscode.McpStdioServerDefinition | undefined {
   const folders = rootFolders(
     (vscode.workspace.workspaceFolders ?? [])
       .filter((folder) => folder.uri.scheme === "file")
@@ -89,30 +98,55 @@ export function currentDefinition(): vscode.McpStdioServerDefinition | undefined
   if (first === undefined) {
     return undefined;
   }
-  const { program, args } = serverCommand(configuredCommand(), folders, readSettings());
+  const settings = readSettings();
+  const { program, args } = serverCommand(
+    configuredCommand(),
+    folders,
+    withHosts ? settings : { ...settings, allowHosts: [] },
+  );
   const definition = new vscode.McpStdioServerDefinition(LABEL, program, args);
   definition.cwd = vscode.Uri.file(first);
   return definition;
 }
 
-/** Whether the installed Veridelta's `mcp` command has no `--allow-host`; false when its help does not run. */
-async function lacksAllowHost(folder: string): Promise<boolean> {
+/** Whether the settings name any host the agent may connect to. */
+function wantsHosts(): boolean {
+  return readSettings().allowHosts.length > 0;
+}
+
+/** Ask the installed Veridelta's `mcp --help` whether it takes `--allow-host`. */
+async function probeHostSupport(folder: string): Promise<HostSupport> {
   try {
-    const finished = await runVeridelta(["mcp", "--help"], folder);
-    return finished.code === 0 && !takesAllowHost(finished.stdout);
+    const finished = await runVeridelta(["mcp", "--help"], folder, { timeoutMs: PROBE_TIMEOUT_MS });
+    if (finished.code !== 0) {
+      return "unknown";
+    }
+    return takesAllowHost(finished.stdout) ? "takes" : "lacks";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
-/** Say once that the hosts setting does not apply to the installed Veridelta. */
-function warnAboutAllowHost(installed: string): void {
-  if (warnedAboutAllowHost) {
+/**
+ * Say once what the installed Veridelta does not hold.
+ *
+ * A Veridelta with no `--allow-host`, such as 0.42.2, also predates the
+ * change that keeps database errors, which can quote values, from the agent.
+ */
+function warnAboutOlder(installed: string, support: HostSupport, hostsSet: boolean): void {
+  if (warnedAboutOlder || support === "takes" || (support === "unknown" && !hostsSet)) {
     return;
   }
-  warnedAboutAllowHost = true;
+  warnedAboutOlder = true;
+  if (support === "unknown") {
+    void showWarning(
+      "The extension could not tell whether the installed Veridelta takes --allow-host, so the agent's server starts without the hosts veridelta.mcp.allowHosts lists.",
+    );
+    return;
+  }
+  const hosts = hostsSet ? " veridelta.mcp.allowHosts does not apply to it, so its hosts are left out." : "";
   void showWarning(
-    `${installed} has no --allow-host, so veridelta.mcp.allowHosts does not apply, and the agent's tools connect to any host a configuration names. A later Veridelta holds them to the hosts the setting lists.`,
+    `${installed} has no --allow-host. With it, the agent's tools can connect to any host a configuration names, and a tool's error can quote a value from the data with veridelta.mcp.allowRowValues off.${hosts} A Veridelta release after 0.42.2 holds the tools to the hosts that setting lists and keeps database errors that quote values from the agent.`,
   );
 }
 
@@ -139,8 +173,55 @@ export class VerideltaMcpProvider
     ];
   }
 
+  /** What each `veridelta.command` this session probed answered about `--allow-host`. */
+  private readonly support = new Map<string, HostSupport>();
+
+  /** The probes still running, one per command. */
+  private readonly probing = new Map<string, Promise<HostSupport>>();
+
+  /** The answer for the configured command, probing once per session in `folder`. */
+  private supportFor(folder: string): Promise<HostSupport> {
+    const key = JSON.stringify(configuredCommand());
+    const known = this.support.get(key);
+    if (known !== undefined) {
+      return Promise.resolve(known);
+    }
+    let running = this.probing.get(key);
+    if (running === undefined) {
+      running = probeHostSupport(folder).then((answer) => {
+        this.support.set(key, answer);
+        this.probing.delete(key);
+        if (answer === "takes" && wantsHosts()) {
+          // The definition offered so far left the hosts out; offer them now.
+          this.changed.fire();
+        }
+        return answer;
+      });
+      this.probing.set(key, running);
+    }
+    return running;
+  }
+
+  /**
+   * Offer the server, with the hosts only once a probe shows the installed Veridelta takes them.
+   *
+   * VS Code can start a copy of this definition without calling resolve, as
+   * the Agent Host does, so the arguments offered must start on their own. A
+   * Veridelta that does not take `--allow-host` refuses to start with it, so
+   * the hosts wait for the probe, which runs only when the settings name a
+   * host. Its answer announces a change, and the next offer carries them.
+   */
   provideMcpServerDefinitions(): vscode.McpStdioServerDefinition[] {
-    const definition = currentDefinition();
+    const probe = currentDefinition(false);
+    const folder = probe?.cwd?.fsPath;
+    if (probe === undefined || folder === undefined) {
+      return [];
+    }
+    const known = this.support.get(JSON.stringify(configuredCommand()));
+    if (known === undefined && wantsHosts()) {
+      void this.supportFor(folder);
+    }
+    const definition = known === "takes" ? currentDefinition(true) : probe;
     return definition === undefined ? [] : [definition];
   }
 
@@ -150,23 +231,24 @@ export class VerideltaMcpProvider
    * VS Code passes the definition it kept from the last provide, which can be
    * older than a settings change made since. That object is left as it is,
    * and a new one is returned, so a revoked flag never starts and a dropped
-   * flag is not dropped for good. A Veridelta that does not take
-   * `--allow-host` would refuse to start with it, so the hosts are left out
-   * for one, and a notification says so once.
+   * flag is not dropped for good. Each probe gives up after a while, and the
+   * server then starts without its answer: with no version, and without the
+   * hosts. A notification says once what an older Veridelta does not hold.
    */
   async resolveMcpServerDefinition(
     kept: vscode.McpStdioServerDefinition,
   ): Promise<vscode.McpStdioServerDefinition | undefined> {
-    const before = currentDefinition();
-    const folder = before?.cwd?.fsPath;
-    if (before === undefined || folder === undefined) {
+    const folder = currentDefinition(false)?.cwd?.fsPath;
+    if (folder === undefined) {
       return undefined;
     }
-    const text = await cliVersion(folder);
+    const [text, support] = await Promise.all([
+      cliVersion(folder, { timeoutMs: PROBE_TIMEOUT_MS }),
+      this.supportFor(folder),
+    ]);
     const version = text === undefined ? undefined : parseVersion(text);
-    const lacks = hasAllowHost(before.args) && (await lacksAllowHost(folder));
     // The settings may have changed while the probes ran, so read them again.
-    const definition = currentDefinition();
+    const definition = currentDefinition(support === "takes");
     if (definition === undefined) {
       return undefined;
     }
@@ -174,12 +256,11 @@ export class VerideltaMcpProvider
     if (shown !== undefined) {
       definition.version = shown;
     }
-    if (lacks) {
-      definition.args = withoutAllowHost(definition.args);
-      warnAboutAllowHost(
-        version === undefined ? "The installed Veridelta" : `Veridelta ${version.join(".")}`,
-      );
-    }
+    warnAboutOlder(
+      version === undefined ? "The installed Veridelta" : `Veridelta ${version.join(".")}`,
+      support,
+      wantsHosts(),
+    );
     return definition;
   }
 

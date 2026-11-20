@@ -114,13 +114,3 @@ export function serverCommand(command: string[], folders: string[], settings: Mc
 export function takesAllowHost(help: string): boolean {
   return /--allow-host(?![\w-])/.test(help);
 }
-
-/** Whether the arguments name a host the server may connect to. */
-export function hasAllowHost(args: readonly string[]): boolean {
-  return args.some((arg) => arg.startsWith(ALLOW_HOST_PREFIX));
-}
-
-/** The arguments without any `--allow-host`, for a Veridelta that does not take it. */
-export function withoutAllowHost(args: readonly string[]): string[] {
-  return args.filter((arg) => !arg.startsWith(ALLOW_HOST_PREFIX));
-}

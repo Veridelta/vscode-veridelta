@@ -60,6 +60,19 @@ describe("Veridelta in agent mode", function () {
     await configuration.update("allowHosts", undefined, vscode.ConfigurationTarget.Global);
   });
 
+  // This test runs first in the file, so no probe has run in this session yet.
+  it("offers no host before it knows the installed Veridelta takes them", async () => {
+    const api = await extension();
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await vscode.workspace
+      .getConfiguration("veridelta.mcp")
+      .update("allowHosts", ["db.internal"], vscode.ConfigurationTarget.Global);
+    await changed;
+    const [server] = api.mcpProvider.provideMcpServerDefinitions();
+    assert.ok(server);
+    assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath]);
+  });
+
   it("offers one server rooted at the workspace folder", async () => {
     const api = await extension();
     const definitions = api.mcpProvider.provideMcpServerDefinitions();
@@ -112,20 +125,30 @@ describe("Veridelta in agent mode", function () {
 
   it("passes the hosts user settings allow, and leaves them out for a Veridelta without --allow-host", async () => {
     const api = await extension();
+    const takes = await takesAllowHostOnPath();
     const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
     await vscode.workspace
       .getConfiguration("veridelta.mcp")
       .update("allowHosts", ["db.internal"], vscode.ConfigurationTarget.Global);
     await changed;
+    const root = ["mcp", "--root", workspaceFolder().fsPath];
+    const expected = takes ? [...root, "--allow-host=db.internal"] : root;
+    await until(
+      () =>
+        JSON.stringify(api.mcpProvider.provideMcpServerDefinitions()[0]?.args) === JSON.stringify(expected),
+      "the offer follows the probe",
+    );
     const [server] = api.mcpProvider.provideMcpServerDefinitions();
     assert.ok(server);
-    assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath, "--allow-host=db.internal"]);
     const resolved = await api.mcpProvider.resolveMcpServerDefinition(server);
     assert.ok(resolved);
-    const expected = (await takesAllowHostOnPath())
-      ? ["mcp", "--root", workspaceFolder().fsPath, "--allow-host=db.internal"]
-      : ["mcp", "--root", workspaceFolder().fsPath];
     assert.deepEqual(resolved.args, expected);
+    if (!takes) {
+      assert.ok(
+        api.notifications().some((message) => message.includes("has no --allow-host")),
+        "a notification says what the installed Veridelta does not hold",
+      );
+    }
   });
 
   it("leaves out a host Veridelta would refuse, and names it", async () => {
