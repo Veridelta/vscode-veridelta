@@ -69,12 +69,14 @@
         "veridelta.mcp.allowRowValues": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Let the agent's tools return values from the data, as `veridelta mcp --allow-row-values` does. Off, an agent sees counts, columns, and keys only."
+          "scope": "machine",
+          "markdownDescription": "Let the agent's tools return values from the data, as `veridelta mcp --allow-row-values` does. Off, an agent sees counts, columns, and keys only. Only user settings apply, so a workspace cannot turn it on."
         },
         "veridelta.mcp.allowQueries": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Let a tool run a side's query as written, as `veridelta mcp --allow-queries` does."
+          "scope": "machine",
+          "markdownDescription": "Let a tool run a side's query as written, as `veridelta mcp --allow-queries` does. Only user settings apply, so a workspace cannot turn it on."
         },
         "veridelta.mcp.allowHosts": {
           "type": "array",
@@ -92,7 +94,9 @@
           "type": "integer",
           "default": 50,
           "minimum": 1,
-          "markdownDescription": "The most rows, or value map entries, one tool call returns, as `veridelta mcp --max-rows` sets it."
+          "maximum": 1000,
+          "scope": "machine",
+          "markdownDescription": "The most rows, or value map entries, one tool call returns, as `veridelta mcp --max-rows` sets it, up to 1000. Only user settings apply."
         }
       }
     },

@@ -56,7 +56,7 @@ describe("Veridelta in agent mode", function () {
 
   afterEach(async () => {
     const configuration = vscode.workspace.getConfiguration("veridelta.mcp");
-    await configuration.update(SETTING, undefined, vscode.ConfigurationTarget.Workspace);
+    await configuration.update(SETTING, undefined, vscode.ConfigurationTarget.Global);
     await configuration.update("allowHosts", undefined, vscode.ConfigurationTarget.Global);
   });
 
@@ -85,7 +85,7 @@ describe("Veridelta in agent mode", function () {
     const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
     await vscode.workspace
       .getConfiguration("veridelta.mcp")
-      .update(SETTING, true, vscode.ConfigurationTarget.Workspace);
+      .update(SETTING, true, vscode.ConfigurationTarget.Global);
     await changed;
     const [server] = api.mcpProvider.provideMcpServerDefinitions();
     assert.ok(server);
@@ -109,34 +109,35 @@ describe("Veridelta in agent mode", function () {
     assert.deepEqual(resolved.args, expected);
   });
 
-  it("ignores hosts a repository's own settings allow", async () => {
+  it("ignores what a repository's own settings grant the agent", async () => {
     const api = await extension();
     const file = path.join(workspaceFolder().fsPath, ".vscode", "settings.json");
     const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined;
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    // maxRows is a setting a workspace may set, so it shows when the file has been read.
+    // htmlMaxRows is a setting a workspace may set, so it shows when the file has been read.
     fs.writeFileSync(
       file,
-      JSON.stringify({ "veridelta.mcp.allowHosts": ["attacker.example"], "veridelta.mcp.maxRows": 7 }),
+      JSON.stringify({
+        "veridelta.mcp.allowHosts": ["attacker.example"],
+        "veridelta.mcp.allowRowValues": true,
+        "veridelta.mcp.allowQueries": true,
+        "veridelta.mcp.maxRows": 1_000_000,
+        "veridelta.run.htmlMaxRows": 7,
+      }),
     );
+    const htmlMaxRows = (): unknown => vscode.workspace.getConfiguration("veridelta.run").get("htmlMaxRows");
     try {
-      await until(
-        () => vscode.workspace.getConfiguration("veridelta.mcp").get("maxRows") === 7,
-        "the workspace settings are read",
-      );
+      await until(() => htmlMaxRows() === 7, "the workspace settings are read");
       const [server] = api.mcpProvider.provideMcpServerDefinitions();
       assert.ok(server);
-      assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath, "--max-rows", "7"]);
+      assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath]);
     } finally {
       if (before === undefined) {
         fs.rmSync(file);
       } else {
         fs.writeFileSync(file, before);
       }
-      await until(
-        () => vscode.workspace.getConfiguration("veridelta.mcp").get("maxRows") === 50,
-        "the workspace settings are restored",
-      );
+      await until(() => htmlMaxRows() !== 7, "the workspace settings are restored");
     }
   });
 });

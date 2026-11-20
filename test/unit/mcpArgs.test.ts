@@ -4,8 +4,11 @@
 import * as assert from "node:assert/strict";
 
 import {
+  DEFAULT_MAX_ROWS,
   DEFAULT_SETTINGS,
   hasAllowHost,
+  maxRowsOf,
+  MOST_MAX_ROWS,
   serverCommand,
   takesAllowHost,
   withoutAllowHost,
@@ -88,5 +91,35 @@ describe("allowed hosts on an older Veridelta", () => {
     assert.equal(hasAllowHost(args), true);
     assert.deepEqual(withoutAllowHost(args), ["run", "veridelta", "mcp", "--root", "/a", "--max-rows", "5"]);
     assert.equal(hasAllowHost(withoutAllowHost(args)), false);
+  });
+});
+
+describe("maxRowsOf", () => {
+  it("keeps a whole number from one up to the most", () => {
+    assert.equal(maxRowsOf(1), 1);
+    assert.equal(maxRowsOf(200), 200);
+    assert.equal(maxRowsOf(MOST_MAX_ROWS), MOST_MAX_ROWS);
+  });
+
+  it("holds a larger number to the most", () => {
+    assert.equal(maxRowsOf(1_000_000), MOST_MAX_ROWS);
+    assert.equal(maxRowsOf(Number.MAX_SAFE_INTEGER), MOST_MAX_ROWS);
+  });
+
+  it("falls back to the default for anything else", () => {
+    for (const value of [
+      0,
+      -3,
+      2.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      "abc",
+      "100",
+      null,
+      undefined,
+      true,
+    ]) {
+      assert.equal(maxRowsOf(value), DEFAULT_MAX_ROWS, String(value));
+    }
   });
 });

@@ -9,8 +9,8 @@ import * as vscode from "vscode";
 
 import { cliVersion, configuredCommand, runVeridelta } from "./cli";
 import {
-  DEFAULT_MAX_ROWS,
   hasAllowHost,
+  maxRowsOf,
   serverCommand,
   takesAllowHost,
   withoutAllowHost,
@@ -36,8 +36,7 @@ function readSettings(): McpSettings {
   return {
     allowRowValues: allowRowValues === true,
     allowQueries: allowQueries === true,
-    maxRows:
-      typeof maxRows === "number" && Number.isInteger(maxRows) && maxRows >= 1 ? maxRows : DEFAULT_MAX_ROWS,
+    maxRows: maxRowsOf(maxRows),
     allowHosts: Array.isArray(allowHosts)
       ? allowHosts.filter((host): host is string => typeof host === "string" && host.length > 0)
       : [],

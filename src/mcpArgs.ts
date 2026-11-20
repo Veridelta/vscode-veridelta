@@ -19,6 +19,17 @@ export interface McpSettings {
 /** The server's own default for `--max-rows`, which the flag is left out for. */
 export const DEFAULT_MAX_ROWS = 50;
 
+/** The most rows one tool call may return, whatever the setting says. */
+export const MOST_MAX_ROWS = 1000;
+
+/** The `--max-rows` a setting asks for: its default unless a whole number of at least one, and at most `MOST_MAX_ROWS`. */
+export function maxRowsOf(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    return DEFAULT_MAX_ROWS;
+  }
+  return Math.min(value, MOST_MAX_ROWS);
+}
+
 /** The settings that start the server as `veridelta mcp` alone would. */
 export const DEFAULT_SETTINGS: McpSettings = {
   allowRowValues: false,
