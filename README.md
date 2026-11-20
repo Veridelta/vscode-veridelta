@@ -4,15 +4,21 @@ Validate a [Veridelta](https://veridelta.github.io/veridelta/) configuration, ru
 
 ## Install
 
-The extension is not on the Marketplace yet. Download `vscode-veridelta-<version>.vsix` from the [latest release](https://github.com/Veridelta/vscode-veridelta/releases/latest) and install it:
+The extension is not on the Marketplace yet. Download `vscode-veridelta-<version>.vsix` from the newest release on the [Releases page](https://github.com/Veridelta/vscode-veridelta/releases) and install it:
 
 ```sh
-code --install-extension vscode-veridelta-0.1.0.vsix
+code --install-extension vscode-veridelta-<version>.vsix
 ```
 
 Or open the Extensions view, choose "Install from VSIX..." from its `...` menu, and pick the file. Every release is a pre-release until the Marketplace listing exists.
 
-The extension runs the `veridelta` command, so [install Veridelta](https://veridelta.github.io/veridelta/#install) first. Veridelta 0.36.0 or later places each problem on its line. Veridelta 0.35.1 works too, with every problem on the first line.
+VS Code installs a `.vsix` without checking who built it. Each release carries a `SHA256SUMS` file and a build provenance attestation, so you can check the file first with the GitHub CLI:
+
+```sh
+gh attestation verify vscode-veridelta-<version>.vsix -R Veridelta/vscode-veridelta
+```
+
+The extension runs the `veridelta` command, so [install Veridelta](https://veridelta.github.io/veridelta/#install) first. Veridelta 0.36.0 or later places each problem on its line. Veridelta 0.35.1 works too, with every problem on the first line. Agent mode also needs Veridelta's `mcp` extra: `uv tool install 'veridelta[mcp]'`, or `uv add 'veridelta[mcp]'` in a project that runs Veridelta through `uv run`.
 
 ## Validate a configuration
 
@@ -28,7 +34,13 @@ The report is written under the extension's storage, so the workspace stays clea
 
 ## Agent mode
 
-The extension registers `veridelta mcp` as an MCP server with VS Code's agent mode, so an agent in the Chat view can validate a configuration, run a comparison, and read the rows that differ through the six tools the [AI agents](https://veridelta.github.io/veridelta/agents/) page lists. The server starts with one `--root` per workspace folder, runs in the first, and reads nothing outside them. It appears as "Veridelta" under **MCP: List Servers**. Four settings map onto its flags, and a change restarts it: `veridelta.mcp.allowRowValues`, `veridelta.mcp.allowQueries`, `veridelta.mcp.allowHosts`, and `veridelta.mcp.maxRows`. Row values stay off until you turn them on, so an agent sees counts, columns, and keys only. Likewise a tool reads data on this machine only, until `veridelta.mcp.allowHosts` names the database servers, buckets, or other hosts it may connect to. These four apply from user settings alone, so a repository's settings cannot widen what the agent reaches. Veridelta 0.42.2 has no `--allow-host`, so with it the extension leaves the hosts out and says so.
+The extension registers `veridelta mcp` as an MCP server with VS Code's agent mode, so an agent in the Chat view can validate a configuration, run a comparison, and read the rows that differ through the six tools the [AI agents](https://veridelta.github.io/veridelta/agents/) page lists. The server starts with one `--root` per workspace folder that exists, runs in the first, and reads nothing outside them. It appears as "Veridelta" under **MCP: List Servers**. With `veridelta.command` set to `uv run`, the server finds the uv project from the first folder, where Validate and Run find it from the configuration's folder.
+
+Five settings shape the server: `veridelta.mcp.allowRowValues`, `veridelta.mcp.allowQueries`, `veridelta.mcp.allowHosts`, `veridelta.mcp.maxRows`, and `veridelta.mcp.env`. They apply from user settings alone, so a repository's settings cannot widen what the agent reaches. In a remote window, such as a dev container or WSL, set them in the Remote settings. A change stops the running server, and the next tool call starts it with the new settings. A session in Copilot's Agent Host picks the change up at its next message, and a change made while the extension was not running reaches it once the extension starts.
+
+Row values stay off until you turn them on, so the tools return no rows. Column names come from the files as their configurations' reader options read them. A tool reads data on this machine only, until `veridelta.mcp.allowHosts` names the database servers, buckets, or other hosts it may connect to. Both holds need a Veridelta release after 0.42.2. With 0.42.2, a tool can connect to any host a configuration names, and a database error can quote a value from the data. 0.42.2 also refuses `--allow-host`, so with it the extension leaves the hosts out and says so once.
+
+VS Code's agent sandbox treats this server by harness. In the default Copilot harness with `chat.agent.sandbox.enabled` on, the server runs inside the sandbox, which must be able to read Veridelta's install, such as `~/.local/share/uv/tools` for a uv tool install, through `chat.agent.sandbox.fileSystem.userConfiguredPaths`. In the Local harness it runs outside the sandbox, since VS Code gives a server an extension registers no way to opt in.
 
 ## Settings
 
