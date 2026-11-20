@@ -35,6 +35,7 @@ export async function openReport(file: string, title: string): Promise<vscode.We
   const page = withCsp(html, makeNonce());
   const panel = vscode.window.createWebviewPanel("veridelta.report", title, vscode.ViewColumn.Beside, {
     enableScripts: true,
+    enableForms: false,
     localResourceRoots: [],
     retainContextWhenHidden: true,
   });
