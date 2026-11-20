@@ -43,6 +43,21 @@ describe("Veridelta: Run comparison", function () {
     }
   });
 
+  it("gives each run its own report, and keeps the newest few", async () => {
+    const api = await extension();
+    const first = await api.runComparison(fixture("veridelta.yaml"));
+    const second = await api.runComparison(fixture("veridelta.yaml"));
+    assert.ok(first && second);
+    assert.notEqual(first.reportFile, second.reportFile);
+    assert.ok(fs.existsSync(first.reportFile), "the earlier run's report stays");
+    for (let run = 0; run < 5; run += 1) {
+      await api.runComparison(fixture("veridelta.yaml"));
+    }
+    const prefix = path.basename(second.reportFile).replace(/[^-]+\.html$/, "");
+    const kept = fs.readdirSync(path.dirname(second.reportFile)).filter((name) => name.startsWith(prefix));
+    assert.equal(kept.length, 5);
+  });
+
   it("opens no empty tab for a report it will not show", async () => {
     const api = await extension();
     const outcome = await api.runComparison(fixture("veridelta.yaml"));

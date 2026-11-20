@@ -5,9 +5,9 @@
  * The run command: run `veridelta run --json --html` on a configuration, then offer the report and the files.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { lstatSync, realpathSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
@@ -24,6 +24,7 @@ import {
   withProgress,
   type Surfaces,
 } from "./notify";
+import { KEEP_PER_CONFIGURATION, reportsToRemove } from "./reports";
 import { openReport, ReportMissing } from "./reportView";
 import { parseRunOutput, verdictLine, type RunSummary } from "./summary";
 
@@ -62,12 +63,38 @@ function maxRowsArguments(): string[] {
     : [];
 }
 
-/** Where the report goes: the extension's storage, one file per configuration path, so the workspace stays clean. */
+/** Make room for one more report: remove this configuration's past the newest few, and any older than a week. */
+async function pruneReports(folder: string, prefix: string): Promise<void> {
+  const names = await readdir(folder);
+  const entries = await Promise.all(
+    names.map(async (name) => ({ name, mtimeMs: (await stat(path.join(folder, name))).mtimeMs })),
+  );
+  await Promise.all(
+    reportsToRemove(entries, prefix, Date.now(), KEEP_PER_CONFIGURATION - 1).map((name) =>
+      rm(path.join(folder, name), { force: true }),
+    ),
+  );
+}
+
+/**
+ * Where the report goes: the extension's storage, so the workspace stays clean.
+ *
+ * Each run gets its own file, so an earlier run's notification still opens
+ * that run's report. Reports past the newest few of the configuration are
+ * removed, since each holds rows from the data.
+ */
 async function reportPath(context: vscode.ExtensionContext, configFile: string): Promise<string> {
   const folder = vscode.Uri.joinPath(context.storageUri ?? context.globalStorageUri, "reports");
   await vscode.workspace.fs.createDirectory(folder);
   const hash = createHash("sha256").update(configFile).digest("hex").slice(0, 8);
-  return vscode.Uri.joinPath(folder, `${path.parse(configFile).name}-${hash}.html`).fsPath;
+  const prefix = `${path.parse(configFile).name}-${hash}-`;
+  try {
+    await pruneReports(folder.fsPath, prefix);
+  } catch {
+    // A report that cannot be removed now is removed after a later run.
+  }
+  const stamp = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
+  return vscode.Uri.joinPath(folder, `${prefix}${stamp}.html`).fsPath;
 }
 
 /** Open the report a run wrote, titled by its configuration. */
