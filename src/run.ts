@@ -53,7 +53,7 @@ export interface RunOutcome {
   written: Record<string, FileStamp>;
 }
 
-/** When a file was written and its size, or undefined when it is not there. */
+/** When a file was written and its size, or why there is none: it is gone, or it cannot be checked. */
 function stampOf(file: string): StampNow {
   try {
     const { mtimeMs, size } = statSync(file);
@@ -214,10 +214,12 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
     return [];
   }
   const { summary } = outcome;
-  const { current: files, notes } = writtenNow(outcome.written, stampOf);
+  const { current: files, notes, unreadable } = writtenNow(outcome.written, stampOf);
   if (notes.length > 0 && files.length === 0) {
     void showInformation(
-      `The discrepancy files this run wrote in ${plan.folder} are gone or changed since it finished, so none of them is this run's now: ${notes.join("; ")}. A later run of the configuration rewrites them.`,
+      unreadable
+        ? `Veridelta cannot open the discrepancy files this run wrote in ${plan.folder} as it left them: ${notes.join("; ")}.`
+        : `The discrepancy files this run wrote in ${plan.folder} are gone or changed since it finished, so none of them is this run's now: ${notes.join("; ")}. A later run of the configuration rewrites them.`,
     );
     return [];
   }

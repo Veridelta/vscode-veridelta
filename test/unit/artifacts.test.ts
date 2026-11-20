@@ -251,6 +251,7 @@ describe("writtenNow", () => {
       {
         current: ["/ws/out/added_rows.csv"],
         notes: ["removed_rows.csv is gone", "changed_rows.csv changed after this run wrote it"],
+        unreadable: false,
       },
     );
   });

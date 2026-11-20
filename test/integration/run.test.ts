@@ -233,6 +233,25 @@ describe("Veridelta: Run comparison", function () {
     assert.doesNotMatch(message, /replaced/);
   });
 
+  it("says the files cannot be read, not that they are gone, when none can be checked", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
+    for (const file of Object.keys(outcome.written)) {
+      // A link to itself cannot be checked, whoever runs the test.
+      fs.rmSync(file);
+      fs.symlinkSync(path.basename(file), file);
+    }
+    assert.deepEqual(await api.openArtifacts(outcome), []);
+    const message = api.notifications().at(-1) ?? "";
+    assert.match(message, /added_rows\.csv cannot be read/);
+    assert.doesNotMatch(message, /gone or changed/);
+  });
+
   it("does not follow a link at a file's name out of the workspace", async function () {
     if (process.platform === "win32") {
       // Creating a link needs privileges a Windows runner may not have.

@@ -103,6 +103,8 @@ export function unchanged(then: FileStamp, now: StampNow | undefined): boolean {
 export interface WrittenNow {
   current: string[];
   notes: string[];
+  /** Whether a file could not be checked, so it may still be as the run left it. */
+  unreadable: boolean;
 }
 
 /**
@@ -120,8 +122,10 @@ export function writtenNow(
 ): WrittenNow {
   const current: string[] = [];
   const notes: string[] = [];
+  let unreadable = false;
   for (const [file, stamp] of Object.entries(written)) {
     const now = stampNow(file);
+    unreadable ||= now === "unreadable";
     if (unchanged(stamp, now)) {
       current.push(file);
     } else {
@@ -134,7 +138,7 @@ export function writtenNow(
       notes.push(`${paths.basename(file)} ${what}`);
     }
   }
-  return { current, notes };
+  return { current, notes, unreadable };
 }
 
 /**
