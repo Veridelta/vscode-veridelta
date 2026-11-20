@@ -8,15 +8,19 @@
  * configuration's `output_path`, in its `output_format`, and skips an empty set.
  * A run compared where the data is stored writes the keys-only files and a
  * sample instead. The path is relative to the folder the command runs in,
- * which is the configuration's folder. This module imports nothing from VS
- * Code, so its tests run under plain Mocha.
+ * which is the configuration's folder.
+ *
+ * Only the two top-level settings are read, from the document tree as
+ * Veridelta's YAML reader would see them: the last of duplicate keys wins,
+ * an alias is followed once, and a `<<` merge key supplies what the mapping
+ * does not set itself. Nothing is expanded, so a file of nested anchors costs
+ * no more than its text. This module imports nothing from VS Code, so its
+ * tests run under plain Mocha.
  */
 
 import * as path from "node:path";
 
-import { parse } from "yaml";
-
-import { isRecord } from "./output";
+import { isAlias, isMap, isScalar, isSeq, parseDocument, type Document, type YAMLMap } from "yaml";
 
 /** The formats `output_format` accepts. */
 export const FORMATS = ["parquet", "csv", "json", "ndjson", "arrow"] as const;
@@ -73,30 +77,105 @@ function isFormat(value: unknown): value is ArtifactFormat {
   return typeof value === "string" && (FORMATS as readonly string[]).includes(value);
 }
 
+/** A node, with one alias followed. */
+function resolved(document: Document, node: unknown): unknown {
+  return isAlias(node) ? node.resolve(document) : node;
+}
+
+/** The mappings a `<<` value names, in the order their keys apply: earlier ones win. */
+function mergedMaps(document: Document, value: unknown): YAMLMap[] {
+  const node = resolved(document, value);
+  if (isMap(node)) {
+    return [node];
+  }
+  if (isSeq(node)) {
+    return node.items.map((item) => resolved(document, item)).filter((item): item is YAMLMap => isMap(item));
+  }
+  return [];
+}
+
+/** A top-level setting's value: the last direct pair, else the first merged mapping that sets it. */
+function setting(document: Document, map: YAMLMap, key: string): unknown {
+  let direct: unknown;
+  let found = false;
+  const merges: unknown[] = [];
+  for (const pair of map.items) {
+    const name = isScalar(pair.key) ? pair.key.value : pair.key;
+    if (name === key) {
+      direct = pair.value;
+      found = true;
+    } else if (name === "<<") {
+      merges.push(pair.value);
+    }
+  }
+  if (found) {
+    return scalarValue(resolved(document, direct));
+  }
+  for (const merge of merges) {
+    for (const source of mergedMaps(document, merge)) {
+      const pair = source.items.find((item) => isScalar(item.key) && item.key.value === key);
+      if (pair !== undefined) {
+        return scalarValue(resolved(document, pair.value));
+      }
+    }
+  }
+  return undefined;
+}
+
+/** A scalar's value, or undefined for a mapping, a list, or nothing. */
+function scalarValue(node: unknown): unknown {
+  return isScalar(node) ? node.value : undefined;
+}
+
+/** What `planArtifacts` found: the plan, and whether the configuration could be read at all. */
+export interface ArtifactRead {
+  /** The plan, or undefined when the configuration names no `output_path` or could not be read. */
+  plan: ArtifactPlan | undefined;
+  /** False when the text is not YAML this reader follows, so the plan is unknown rather than absent. */
+  readable: boolean;
+}
+
 /**
- * Return the plan a configuration implies, or undefined when it names no `output_path`.
+ * Read where a configuration sends its discrepancy files.
  *
  * @param configText The configuration file's text.
  * @param configFolder The folder the configuration is in, which the run ran in.
  */
-export function artifactPlan(configText: string, configFolder: string): ArtifactPlan | undefined {
-  let config: unknown;
+export function planArtifacts(configText: string, configFolder: string): ArtifactRead {
+  let document: Document;
   try {
-    config = parse(configText);
+    document = parseDocument(configText, { uniqueKeys: false });
   } catch {
-    return undefined;
+    return { plan: undefined, readable: false };
   }
-  if (!isRecord(config) || typeof config.output_path !== "string" || config.output_path.length === 0) {
-    return undefined;
+  if (document.errors.length > 0) {
+    return { plan: undefined, readable: false };
   }
-  const format = config.output_format === undefined ? "parquet" : config.output_format;
+  const root = document.contents;
+  if (!isMap(root)) {
+    return { plan: undefined, readable: true };
+  }
+  const outputPath = setting(document, root, "output_path");
+  if (typeof outputPath !== "string" || outputPath.length === 0) {
+    return { plan: undefined, readable: true };
+  }
+  const written = setting(document, root, "output_format");
+  const format = written === undefined ? "parquet" : written;
   if (!isFormat(format)) {
-    return undefined;
+    return { plan: undefined, readable: true };
   }
   return {
-    folder: path.resolve(configFolder, config.output_path),
-    format,
-    textual: TEXT_FORMATS.includes(format),
-    candidates: NAMES.map((name) => `${name}.${format}`),
+    plan: {
+      folder: path.resolve(configFolder, outputPath),
+      format,
+      textual: TEXT_FORMATS.includes(format),
+      candidates: NAMES.map((name) => `${name}.${format}`),
+    },
+    readable: true,
   };
+}
+
+/** Return the plan a configuration implies, or undefined when it names none or cannot be read. */
+export function artifactPlan(configText: string, configFolder: string): ArtifactPlan | undefined {
+  return planArtifacts(configText, configFolder).plan;
 }

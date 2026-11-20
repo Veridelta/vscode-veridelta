@@ -12,7 +12,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { artifactPlan, candidatesFor, type ArtifactPlan } from "./artifacts";
+import { candidatesFor, planArtifacts, type ArtifactPlan } from "./artifacts";
 import { CommandNotFound, RunCancelled, runVeridelta, type Finished } from "./cli";
 import {
   logStderr,
@@ -35,6 +35,8 @@ export interface RunOutcome {
   reportFile: string;
   /** Where the discrepancy files went, or undefined when the configuration names no `output_path`. */
   artifacts: ArtifactPlan | undefined;
+  /** False when the extension could not read the configuration's output settings, which Veridelta read. */
+  artifactsReadable: boolean;
   /** When the run started, in milliseconds since the epoch, so files from earlier runs can be told apart. */
   startedAt: number;
 }
@@ -145,7 +147,11 @@ function reasonToSkip(file: string): string | undefined {
 export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
   const plan = outcome.artifacts;
   if (plan === undefined) {
-    void showInformation("This configuration sets no output_path, so the run wrote no discrepancy files.");
+    void showInformation(
+      outcome.artifactsReadable
+        ? "This configuration sets no output_path, so the run wrote no discrepancy files."
+        : "The extension could not read output_path from this configuration, so it cannot find the discrepancy files. Open the output_path folder in the Explorer.",
+    );
     return [];
   }
   const { summary } = outcome;
@@ -311,11 +317,13 @@ export async function runComparison(
     return undefined;
   }
   const configText = await readFile(configFile, "utf8");
+  const read = planArtifacts(configText, folder);
   const outcome: RunOutcome = {
     configFile,
     summary: parsed.summary,
     reportFile,
-    artifacts: artifactPlan(configText, folder),
+    artifacts: read.plan,
+    artifactsReadable: read.readable,
     startedAt,
   };
   offerOutcome(outcome, surfaces).catch((error: unknown) => {
