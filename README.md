@@ -34,7 +34,7 @@ The extension registers `veridelta mcp` as an MCP server with VS Code's agent mo
 
 | Setting | Default | Meaning |
 | :--- | :--- | :--- |
-| `veridelta.command` | `["veridelta"]` | The words that run Veridelta. A project that runs it through uv sets `["uv", "run", "veridelta"]`. On macOS the extension host's PATH can differ from a terminal's, and this setting is the fix. |
+| `veridelta.command` | `["veridelta"]` | The words that run Veridelta. A project that runs it through uv sets `["uv", "run", "veridelta"]`. On macOS the extension host's PATH can differ from a terminal's, and this setting is the fix. It names a program to run, so the extension stays off until you trust the workspace. |
 | `veridelta.run.htmlMaxRows` | unset | Rows per table in the HTML report, passed as `--html-max-rows`. Unset, Veridelta's default of 1000 applies. |
 | `veridelta.mcp.allowRowValues` | `false` | Let the agent's tools return values from the data, as `--allow-row-values` does. User settings only. |
 | `veridelta.mcp.allowQueries` | `false` | Let a tool run a side's query as written, as `--allow-queries` does. User settings only. |

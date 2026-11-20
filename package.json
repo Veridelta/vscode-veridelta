@@ -30,6 +30,16 @@
   "extensionKind": [
     "workspace"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Veridelta runs the program veridelta.command names, and a workspace's settings can set it."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Veridelta reads configurations and data from files on disk."
+    }
+  },
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -55,6 +65,7 @@
           "default": [
             "veridelta"
           ],
+          "restricted": true,
           "markdownDescription": "The words that run Veridelta. A project that runs it through uv sets `[\"uv\", \"run\", \"veridelta\"]`. The command runs in the configuration file's folder."
         },
         "veridelta.run.htmlMaxRows": {
