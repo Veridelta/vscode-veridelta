@@ -77,7 +77,25 @@ describe("Veridelta in agent mode", function () {
     const [server] = api.mcpProvider.provideMcpServerDefinitions();
     assert.ok(server);
     const resolved = await api.mcpProvider.resolveMcpServerDefinition(server);
+    assert.ok(resolved);
     assert.match(resolved.version ?? "", /^\d+\.\d+\.\d+$/);
+  });
+
+  it("starts the server with the settings as they are, not as VS Code kept them", async () => {
+    const api = await extension();
+    const [kept] = api.mcpProvider.provideMcpServerDefinitions();
+    assert.ok(kept);
+    const keptArgs = [...kept.args];
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await vscode.workspace
+      .getConfiguration("veridelta.mcp")
+      .update(SETTING, true, vscode.ConfigurationTarget.Global);
+    await changed;
+    const resolved = await api.mcpProvider.resolveMcpServerDefinition(kept);
+    assert.ok(resolved);
+    assert.notEqual(resolved, kept, "the definition VS Code kept is left as it was");
+    assert.deepEqual(kept.args, keptArgs);
+    assert.deepEqual(resolved.args, ["mcp", "--root", workspaceFolder().fsPath, "--allow-row-values"]);
   });
 
   it("adds the flag and announces a change when a setting turns on", async () => {
@@ -103,6 +121,7 @@ describe("Veridelta in agent mode", function () {
     assert.ok(server);
     assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath, "--allow-host=db.internal"]);
     const resolved = await api.mcpProvider.resolveMcpServerDefinition(server);
+    assert.ok(resolved);
     const expected = (await takesAllowHostOnPath())
       ? ["mcp", "--root", workspaceFolder().fsPath, "--allow-host=db.internal"]
       : ["mcp", "--root", workspaceFolder().fsPath];

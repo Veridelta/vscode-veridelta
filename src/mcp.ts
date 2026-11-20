@@ -110,30 +110,42 @@ export class VerideltaMcpProvider
   }
 
   /**
-   * Fill in the installed Veridelta's version, which agent mode shows beside the server.
+   * Return the server to start: built from the settings and folders as they are now, with the version.
    *
-   * A Veridelta that does not take `--allow-host` would refuse to start with it,
-   * so the flags are left out for one, and a notification says so once.
+   * VS Code passes the definition it kept from the last provide, which can be
+   * older than a settings change made since. That object is left as it is,
+   * and a new one is returned, so a revoked flag never starts and a dropped
+   * flag is not dropped for good. A Veridelta that does not take
+   * `--allow-host` would refuse to start with it, so the hosts are left out
+   * for one, and a notification says so once.
    */
   async resolveMcpServerDefinition(
-    server: vscode.McpStdioServerDefinition,
-  ): Promise<vscode.McpStdioServerDefinition> {
-    const folder = server.cwd?.fsPath;
-    if (folder === undefined) {
-      return server;
+    kept: vscode.McpStdioServerDefinition,
+  ): Promise<vscode.McpStdioServerDefinition | undefined> {
+    const before = currentDefinition();
+    const folder = before?.cwd?.fsPath;
+    if (before === undefined || folder === undefined) {
+      return undefined;
     }
     const text = await cliVersion(folder);
     const version = text === undefined ? undefined : parseVersion(text);
-    if (version !== undefined) {
-      server.version = version.join(".");
+    const lacks = hasAllowHost(before.args) && (await lacksAllowHost(folder));
+    // The settings may have changed while the probes ran, so read them again.
+    const definition = currentDefinition();
+    if (definition === undefined) {
+      return undefined;
     }
-    if (hasAllowHost(server.args) && (await lacksAllowHost(folder))) {
-      server.args = withoutAllowHost(server.args);
+    const shown = version === undefined ? kept.version : version.join(".");
+    if (shown !== undefined) {
+      definition.version = shown;
+    }
+    if (lacks) {
+      definition.args = withoutAllowHost(definition.args);
       warnAboutAllowHost(
         version === undefined ? "The installed Veridelta" : `Veridelta ${version.join(".")}`,
       );
     }
-    return server;
+    return definition;
   }
 
   dispose(): void {
