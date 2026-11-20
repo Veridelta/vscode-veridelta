@@ -127,6 +127,17 @@ describe("planArtifacts", () => {
     assert.ok(performance.now() - started < 2000);
   });
 
+  it("calls a file whose merges loop unreadable, rather than guess the folder", () => {
+    // PyYAML gives p5 here and a lookup in tree order gives p4; Veridelta main refuses the file.
+    const loop =
+      "--- &r\n<<: &a3 {<<: [{output_path: p4}, *r]}\n<<: {<<: {<<: {output_path: p5}}, <<: *a3}\n";
+    assert.deepEqual(planArtifacts(`${loop}${BASE}`, FOLDER), { plan: undefined, readable: false });
+    assert.deepEqual(planArtifacts(`a: &a\n  <<: *a\n  output_path: one\n<<: *a\n${BASE}`, FOLDER), {
+      plan: undefined,
+      readable: false,
+    });
+  });
+
   it("reads a file whose anchors expand past any reasonable size, without expanding them", () => {
     const laughs = ["a: &a [x, x, x, x, x, x, x, x, x, x]"];
     for (let level = 1; level < 10; level += 1) {

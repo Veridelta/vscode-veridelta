@@ -177,6 +177,13 @@ function mergedMaps(document: Document, value: unknown): YAMLMap[] {
 /** No pair sets the key. */
 const MISSING = Symbol("missing");
 
+/** What a lookup of one key has seen: the answer for each mapping done, and whether it met a loop. */
+interface Lookup {
+  done: Map<YAMLMap, unknown>;
+  open: Set<YAMLMap>;
+  looped: boolean;
+}
+
 /**
  * A key's value node in a mapping, as PyYAML's merge flattening gives it.
  *
@@ -184,15 +191,20 @@ const MISSING = Symbol("missing");
  * same way, in the order of the `<<` keys, then the mapping's own pairs, and
  * the last pair with the key wins. So an own pair beats any merge, a later
  * `<<` beats an earlier one, and the last duplicate wins. Each mapping is
- * looked at once per key, so repeated aliases cost no more than the text,
- * and an alias loop ends.
+ * looked at once per key, so repeated aliases cost no more than the text.
+ * A mapping that merges a mapping holding it is a loop: Veridelta main
+ * refuses such a file, and PyYAML's answer for it depends on the order it
+ * flattens in place, so the lookup notes the loop rather than guess.
  */
-function lookup(document: Document, map: YAMLMap, key: string, seen: Map<YAMLMap, unknown>): unknown {
-  if (seen.has(map)) {
-    return seen.get(map);
+function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): unknown {
+  if (seen.done.has(map)) {
+    return seen.done.get(map);
   }
-  // A mapping still being looked at merges itself: PyYAML fails there, and here it sets nothing.
-  seen.set(map, MISSING);
+  if (seen.open.has(map)) {
+    seen.looped = true;
+    return MISSING;
+  }
+  seen.open.add(map);
   let found: unknown = MISSING;
   for (const pair of map.items) {
     if (isMergeKey(pair.key)) {
@@ -209,13 +221,21 @@ function lookup(document: Document, map: YAMLMap, key: string, seen: Map<YAMLMap
       found = pair.value;
     }
   }
-  seen.set(map, found);
+  seen.open.delete(map);
+  seen.done.set(map, found);
   return found;
 }
 
+/** A merge loop met while reading a setting, so its value cannot be told. */
+class MergeLoop extends Error {}
+
 /** A top-level setting's value, with merges and aliases followed as Veridelta's YAML reader follows them. */
 function setting(document: Document, map: YAMLMap, key: string): unknown {
-  const node = lookup(document, map, key, new Map());
+  const seen: Lookup = { done: new Map(), open: new Set(), looped: false };
+  const node = lookup(document, map, key, seen);
+  if (seen.looped) {
+    throw new MergeLoop();
+  }
   return node === MISSING ? undefined : scalarValue(resolved(document, node));
 }
 
@@ -252,11 +272,20 @@ export function planArtifacts(configText: string, configFolder: string): Artifac
   if (!isMap(root)) {
     return { plan: undefined, readable: true };
   }
-  const outputPath = setting(document, root, "output_path");
+  let outputPath: unknown;
+  let written: unknown;
+  try {
+    outputPath = setting(document, root, "output_path");
+    written = setting(document, root, "output_format");
+  } catch (error) {
+    if (error instanceof MergeLoop) {
+      return { plan: undefined, readable: false };
+    }
+    throw error;
+  }
   if (typeof outputPath !== "string" || outputPath.length === 0) {
     return { plan: undefined, readable: true };
   }
-  const written = setting(document, root, "output_format");
   const format = written === undefined ? "parquet" : written;
   if (!isFormat(format)) {
     return { plan: undefined, readable: true };
