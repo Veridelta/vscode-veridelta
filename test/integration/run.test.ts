@@ -85,6 +85,22 @@ describe("Veridelta: Run comparison", function () {
     assert.doesNotMatch(styles, /@import|url\(\s*(?!["']?data:)/i);
   });
 
+  it("keeps the newest five reports when two runs of a configuration overlap", async () => {
+    const api = await extension();
+    const first = await api.runComparison(fixture("veridelta.yaml"));
+    assert.ok(first);
+    const folder = path.dirname(first.reportFile);
+    const prefix = path.basename(first.reportFile).replace(/[^-]+\.html$/, "");
+    for (let run = 0; run < 5; run += 1) {
+      await api.runComparison(fixture("veridelta.yaml"));
+    }
+    await Promise.all([
+      api.runComparison(fixture("veridelta.yaml")),
+      api.runComparison(fixture("veridelta.yaml")),
+    ]);
+    assert.equal(fs.readdirSync(folder).filter((name) => name.startsWith(prefix)).length, 5);
+  });
+
   it("opens no empty tab for a report it will not show", async () => {
     const api = await extension();
     const outcome = await api.runComparison(fixture("veridelta.yaml"));

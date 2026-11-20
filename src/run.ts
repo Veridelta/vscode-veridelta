@@ -101,17 +101,44 @@ function maxRowsArguments(): string[] {
     : [];
 }
 
-/** Make room for one more report: remove this configuration's past the newest few, and any older than a week. */
-async function pruneReports(folder: string, prefix: string): Promise<void> {
+/**
+ * Remove this configuration's reports past the newest `keep`, and any report older than a week.
+ *
+ * Runs of one configuration can overlap, and another prune can remove a file
+ * first, so a file that is gone by the time it is read is skipped.
+ */
+async function pruneReports(folder: string, prefix: string, keep: number): Promise<void> {
   const names = await readdir(folder);
-  const entries = await Promise.all(
-    names.map(async (name) => ({ name, mtimeMs: (await stat(path.join(folder, name))).mtimeMs })),
-  );
+  const entries = (
+    await Promise.all(
+      names.map(async (name) => {
+        try {
+          return { name, mtimeMs: (await stat(path.join(folder, name))).mtimeMs };
+        } catch {
+          return undefined;
+        }
+      }),
+    )
+  ).filter((entry) => entry !== undefined);
   await Promise.all(
-    reportsToRemove(entries, prefix, Date.now(), KEEP_PER_CONFIGURATION - 1).map((name) =>
+    reportsToRemove(entries, prefix, Date.now(), keep).map((name) =>
       rm(path.join(folder, name), { force: true }),
     ),
   );
+}
+
+/** Hold the configuration to its newest reports once a run is done, since runs of it can overlap. */
+async function pruneAfterRun(reportFile: string): Promise<void> {
+  try {
+    await pruneReports(path.dirname(reportFile), reportPrefix(reportFile), KEEP_PER_CONFIGURATION);
+  } catch {
+    // A report that cannot be removed now is removed after a later run.
+  }
+}
+
+/** The name prefix every report of one configuration shares. */
+function reportPrefix(reportFile: string): string {
+  return path.basename(reportFile).replace(/[^-]+\.html$/, "");
 }
 
 /**
@@ -127,7 +154,8 @@ async function reportPath(context: vscode.ExtensionContext, configFile: string):
   const hash = createHash("sha256").update(configFile).digest("hex").slice(0, 8);
   const prefix = `${path.parse(configFile).name}-${hash}-`;
   try {
-    await pruneReports(folder.fsPath, prefix);
+    // Room for the report this run writes.
+    await pruneReports(folder.fsPath, prefix, KEEP_PER_CONFIGURATION - 1);
   } catch {
     // A report that cannot be removed now is removed after a later run.
   }
@@ -329,6 +357,7 @@ export async function runComparison(
       },
     );
   } catch (error) {
+    await pruneAfterRun(reportFile);
     if (error instanceof RunCancelled) {
       void showInformation(`Veridelta: the run of ${name} was cancelled.`);
     } else if (error instanceof CommandNotFound) {
@@ -338,6 +367,7 @@ export async function runComparison(
     }
     return undefined;
   }
+  await pruneAfterRun(reportFile);
   logStderr(surfaces.output, finished.stderr);
   const parsed = parseRunOutput(finished.stdout, finished.code);
   if (parsed.kind === "unparsable") {
