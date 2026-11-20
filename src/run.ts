@@ -16,7 +16,7 @@ import {
   candidatesFor,
   isInside,
   planArtifacts,
-  unchanged,
+  writtenNow,
   writtenSince,
   type ArtifactPlan,
   type FileStamp,
@@ -184,12 +184,10 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
     return [];
   }
   const { summary } = outcome;
-  const written = Object.entries(outcome.written);
-  const files = written.filter(([file, stamp]) => unchanged(stamp, stampOf(file))).map(([file]) => file);
-  const changed = written.filter(([file]) => !files.includes(file)).map(([file]) => file);
-  if (changed.length > 0 && files.length === 0) {
+  const { current: files, notes } = writtenNow(outcome.written, stampOf);
+  if (notes.length > 0 && files.length === 0) {
     void showInformation(
-      `A later run replaced the discrepancy files in ${plan.folder}, so this run's are gone. Open them from the later run's notification.`,
+      `The discrepancy files this run wrote in ${plan.folder} are gone or changed since it finished, so none of them is this run's now: ${notes.join("; ")}. A later run of the configuration rewrites them.`,
     );
     return [];
   }
@@ -204,7 +202,7 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
   }
   if (plan.textual) {
     const opened: string[] = [];
-    const skipped = changed.map((file) => `${path.basename(file)} changed after this run wrote it`);
+    const skipped = [...notes];
     for (const file of files) {
       const reason = reasonToSkip(file);
       if (reason !== undefined) {
@@ -230,9 +228,11 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
     return opened;
   }
   await vscode.commands.executeCommand("revealInExplorer", vscode.Uri.file(files[0] ?? plan.folder));
-  const noun = files.length === 1 ? "file" : "files";
+  const count = Object.keys(outcome.written).length;
+  const noun = count === 1 ? "file" : "files";
+  const changes = notes.length > 0 ? ` ${notes.join("; ")}.` : "";
   void showInformation(
-    `The run wrote ${String(files.length)} ${plan.format} ${noun} to ${plan.folder}. Set output_format to csv to open them as text.`,
+    `The run wrote ${String(count)} ${plan.format} ${noun} to ${plan.folder}.${changes} Set output_format to csv to open them as text.`,
   );
   return files;
 }

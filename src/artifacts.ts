@@ -96,6 +96,40 @@ export function unchanged(then: FileStamp, now: FileStamp | undefined): boolean 
   return now?.mtimeMs === then.mtimeMs && now.size === then.size;
 }
 
+/** The files a run wrote that are still as it left them, and a note for each one that is not. */
+export interface WrittenNow {
+  current: string[];
+  notes: string[];
+}
+
+/**
+ * Sort the files a run wrote by whether they are still as it left them.
+ *
+ * A later run of the configuration rewrites them, and a person can delete or
+ * edit them, so a note says only what happened to each, not why.
+ *
+ * @param stampNow A file's stamp now, or undefined when it is gone.
+ */
+export function writtenNow(
+  written: Record<string, FileStamp>,
+  stampNow: (file: string) => FileStamp | undefined,
+  paths: path.PlatformPath = path,
+): WrittenNow {
+  const current: string[] = [];
+  const notes: string[] = [];
+  for (const [file, stamp] of Object.entries(written)) {
+    const now = stampNow(file);
+    if (unchanged(stamp, now)) {
+      current.push(file);
+    } else {
+      notes.push(
+        `${paths.basename(file)} ${now === undefined ? "is gone" : "changed after this run wrote it"}`,
+      );
+    }
+  }
+  return { current, notes };
+}
+
 /**
  * Whether a path lies inside a folder, or is the folder.
  *

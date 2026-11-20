@@ -11,6 +11,7 @@ import {
   isInside,
   planArtifacts,
   unchanged,
+  writtenNow,
   writtenSince,
 } from "../../src/artifacts";
 
@@ -193,5 +194,27 @@ describe("writtenSince and unchanged", () => {
     assert.equal(unchanged({ mtimeMs: 10, size: 4 }, { mtimeMs: 11, size: 4 }), false);
     assert.equal(unchanged({ mtimeMs: 10, size: 4 }, { mtimeMs: 10, size: 5 }), false);
     assert.equal(unchanged({ mtimeMs: 10, size: 4 }, undefined), false);
+  });
+});
+
+describe("writtenNow", () => {
+  const written = {
+    "/ws/out/added_rows.csv": { mtimeMs: 10, size: 4 },
+    "/ws/out/removed_rows.csv": { mtimeMs: 10, size: 4 },
+    "/ws/out/changed_rows.csv": { mtimeMs: 10, size: 4 },
+  };
+
+  it("keeps the files as the run left them and says what happened to the others, without guessing why", () => {
+    const now: Record<string, { mtimeMs: number; size: number }> = {
+      "/ws/out/added_rows.csv": { mtimeMs: 10, size: 4 },
+      "/ws/out/changed_rows.csv": { mtimeMs: 12, size: 9 },
+    };
+    assert.deepEqual(
+      writtenNow(written, (file) => now[file]),
+      {
+        current: ["/ws/out/added_rows.csv"],
+        notes: ["removed_rows.csv is gone", "changed_rows.csv changed after this run wrote it"],
+      },
+    );
   });
 });

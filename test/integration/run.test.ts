@@ -177,32 +177,68 @@ describe("Veridelta: Run comparison", function () {
     assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv changed after this run wrote it/);
   });
 
+  it("names a folder found at a file's name, and opens the rest", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
+    const added = path.join(outcome.artifacts.folder, "added_rows.csv");
+    fs.rmSync(added);
+    fs.mkdirSync(added);
+    // As if the run had left a folder there, so the check after the stamps runs.
+    const { mtimeMs, size } = fs.statSync(added);
+    const opened = await api.openArtifacts({
+      ...outcome,
+      written: { ...outcome.written, [added]: { mtimeMs, size } },
+    });
+    assert.deepEqual(
+      opened.map((file) => path.basename(file)),
+      ["removed_rows.csv", "changed_rows.csv"],
+    );
+    assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv is not a file/);
+  });
+
+  it("says a file is gone rather than guessing why", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
+    fs.rmSync(outcome.artifacts.folder, { recursive: true, force: true });
+    assert.deepEqual(await api.openArtifacts(outcome), []);
+    const message = api.notifications().at(-1) ?? "";
+    assert.match(message, /added_rows\.csv is gone/);
+    assert.doesNotMatch(message, /replaced/);
+  });
+
   it("does not follow a link at a file's name out of the workspace", async function () {
     if (process.platform === "win32") {
       // Creating a link needs privileges a Windows runner may not have.
       this.skip();
     }
-    const out = path.join(workspaceFolder().fsPath, "out");
-    fs.rmSync(out, { recursive: true, force: true });
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "veridelta-outside-"));
     try {
-      // A link planted before the run, which Veridelta 0.42.2 writes through and later ones replace.
-      fs.mkdirSync(out);
+      // Veridelta 0.42.2 writes through a link planted at a file's name, so the run's stamp is the
+      // link's target. This test builds that outcome whichever Veridelta runs.
       const target = path.join(outside, "elsewhere.csv");
       fs.writeFileSync(target, "id\n1\n");
-      const added = path.join(out, "added_rows.csv");
+      const added = path.join(outcome.artifacts.folder, "added_rows.csv");
+      fs.rmSync(added);
       fs.symlinkSync(target, added);
-      const api = await extension();
-      const outcome = await api.runComparison(fixture("with_output.yaml"));
-      assert.ok(outcome?.artifacts);
-      const opened = (await api.openArtifacts(outcome)).map((file) => path.basename(file));
-      if (fs.lstatSync(added).isSymbolicLink()) {
-        assert.deepEqual(opened, ["removed_rows.csv", "changed_rows.csv"]);
-        assert.ok(!vscode.workspace.textDocuments.some((document) => document.uri.fsPath === target));
-        assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv links outside the workspace/);
-      } else {
-        assert.deepEqual(opened, ["added_rows.csv", "removed_rows.csv", "changed_rows.csv"]);
-      }
+      const { mtimeMs, size } = fs.statSync(added);
+      const opened = await api.openArtifacts({
+        ...outcome,
+        written: { ...outcome.written, [added]: { mtimeMs, size } },
+      });
+      assert.deepEqual(
+        opened.map((file) => path.basename(file)),
+        ["removed_rows.csv", "changed_rows.csv"],
+      );
+      assert.ok(!vscode.workspace.textDocuments.some((document) => document.uri.fsPath === target));
+      assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv links outside the workspace/);
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
