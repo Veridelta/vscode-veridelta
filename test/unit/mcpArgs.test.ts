@@ -9,6 +9,7 @@ import {
   hasAllowHost,
   maxRowsOf,
   MOST_MAX_ROWS,
+  rootFolders,
   serverCommand,
   takesAllowHost,
   withoutAllowHost,
@@ -121,5 +122,22 @@ describe("maxRowsOf", () => {
     ]) {
       assert.equal(maxRowsOf(value), DEFAULT_MAX_ROWS, String(value));
     }
+  });
+});
+
+describe("rootFolders", () => {
+  it("keeps the folders that are there, in order, so the first one left is the working folder", () => {
+    const there = new Set(["/b", "/c"]);
+    assert.deepEqual(
+      rootFolders(["/a", "/b", "/c"], (folder) => there.has(folder)),
+      ["/b", "/c"],
+    );
+  });
+
+  it("keeps nothing when no folder is there", () => {
+    assert.deepEqual(
+      rootFolders(["/a"], () => false),
+      [],
+    );
   });
 });

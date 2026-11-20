@@ -5,12 +5,15 @@
  * Register `veridelta mcp` with agent mode, one `--root` per workspace folder, with the settings as flags.
  */
 
+import { statSync } from "node:fs";
+
 import * as vscode from "vscode";
 
 import { cliVersion, configuredCommand, runVeridelta } from "./cli";
 import {
   hasAllowHost,
   maxRowsOf,
+  rootFolders,
   serverCommand,
   takesAllowHost,
   withoutAllowHost,
@@ -43,20 +46,30 @@ function readSettings(): McpSettings {
   };
 }
 
-/** The server for the open workspace, or undefined when no folder on disk is open. */
+/** Whether a path is a folder on disk now. */
+function isFolder(folder: string): boolean {
+  try {
+    return statSync(folder).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** The server for the open workspace, or undefined when no folder on disk is there. */
 export function currentDefinition(): vscode.McpStdioServerDefinition | undefined {
-  const folders = (vscode.workspace.workspaceFolders ?? []).filter((folder) => folder.uri.scheme === "file");
+  const folders = rootFolders(
+    (vscode.workspace.workspaceFolders ?? [])
+      .filter((folder) => folder.uri.scheme === "file")
+      .map((folder) => folder.uri.fsPath),
+    isFolder,
+  );
   const [first] = folders;
   if (first === undefined) {
     return undefined;
   }
-  const { program, args } = serverCommand(
-    configuredCommand(),
-    folders.map((folder) => folder.uri.fsPath),
-    readSettings(),
-  );
+  const { program, args } = serverCommand(configuredCommand(), folders, readSettings());
   const definition = new vscode.McpStdioServerDefinition(LABEL, program, args);
-  definition.cwd = first.uri;
+  definition.cwd = vscode.Uri.file(first);
   return definition;
 }
 

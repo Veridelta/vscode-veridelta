@@ -43,6 +43,19 @@ export const ALLOW_HOST = "--allow-host";
 
 const ALLOW_HOST_PREFIX = `${ALLOW_HOST}=`;
 
+/**
+ * The folders the server can be rooted at: those that are there now.
+ *
+ * Veridelta refuses to start when one root is missing, so a folder that was
+ * unmounted or removed would take the server away from every other folder.
+ *
+ * @param folders The workspace folders, first one first.
+ * @param isFolder Whether a path is a folder on disk now.
+ */
+export function rootFolders(folders: readonly string[], isFolder: (folder: string) => boolean): string[] {
+  return folders.filter((folder) => isFolder(folder));
+}
+
 /** A program and its arguments. */
 export interface ServerCommand {
   program: string;
