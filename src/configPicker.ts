@@ -7,6 +7,8 @@
 
 import * as vscode from "vscode";
 
+import { showInformation } from "./notify";
+
 const CONFIG_GLOB = "**/veridelta*.yaml";
 const EXCLUDED = "**/{node_modules,.venv,venv,site,.git}/**";
 const MOST = 50;
@@ -19,7 +21,7 @@ export async function pickConfiguration(): Promise<vscode.Uri | undefined> {
   }
   const found = await vscode.workspace.findFiles(CONFIG_GLOB, EXCLUDED, MOST);
   if (found.length === 0) {
-    void vscode.window.showInformationMessage("Open a Veridelta configuration file, then run the command.");
+    void showInformation("Open a Veridelta configuration file, then run the command.");
     return undefined;
   }
   if (found.length === 1) {

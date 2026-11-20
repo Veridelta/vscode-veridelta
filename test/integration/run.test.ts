@@ -58,6 +58,16 @@ describe("Veridelta: Run comparison", function () {
     );
   });
 
+  it("shows Veridelta's error with no link a click would follow", async () => {
+    // VS Code's own pattern for a link in a notification, from its linkedText parser.
+    const link = /\[([^\]]+)\]\(((?:https?:\/\/|command:|file:)[^)\s]+)(?: (["'])(.+?)(\3))?\)/i;
+    const api = await extension();
+    assert.equal(await api.runComparison(fixture("linked.yaml")), undefined);
+    const message = api.notifications().at(-1) ?? "";
+    assert.match(message, /command:workbench\.action\.terminal\.new/, "the message names the column read");
+    assert.doesNotMatch(message, link);
+  });
+
   it("gives nothing for a configuration that does not load", async () => {
     const api = await extension();
     assert.equal(await api.runComparison(fixture("broken.yaml")), undefined);

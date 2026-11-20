@@ -11,7 +11,15 @@ import * as vscode from "vscode";
 
 import { cliVersion, CommandNotFound, runVeridelta, type Finished } from "./cli";
 import { rangeFor } from "./locate";
-import { logStderr, messageOf, offerSettings, type Surfaces } from "./notify";
+import {
+  logStderr,
+  messageOf,
+  offerSettings,
+  showError,
+  showInformation,
+  showWarning,
+  type Surfaces,
+} from "./notify";
 import { parseOutput, problemsOf, type Problem } from "./report";
 import { isAtLeast, LOCATIONS_VERSION, MINIMUM_VERSION, parseVersion } from "./version";
 
@@ -40,7 +48,7 @@ async function hintAboutLocations(folder: string): Promise<void> {
   const text = await cliVersion(folder);
   const version = text === undefined ? undefined : parseVersion(text);
   const installed = version === undefined ? "The installed Veridelta" : `Veridelta ${version.join(".")}`;
-  void vscode.window.showInformationMessage(
+  void showInformation(
     `${installed} reports each problem on the first line. Veridelta ${LOCATIONS_VERSION} or later places it on its line.`,
   );
 }
@@ -50,12 +58,12 @@ async function explainUnreadable(detail: string, folder: string): Promise<void> 
   const text = await cliVersion(folder);
   const version = text === undefined ? undefined : parseVersion(text);
   if (version !== undefined && !isAtLeast(text ?? "", MINIMUM_VERSION)) {
-    void vscode.window.showErrorMessage(
+    void showError(
       `Veridelta ${version.join(".")} is older than ${MINIMUM_VERSION}, the oldest this extension reads. Upgrade Veridelta.`,
     );
     return;
   }
-  void vscode.window.showErrorMessage(`Veridelta gave no report to read: ${detail}`);
+  void showError(`Veridelta gave no report to read: ${detail}`);
 }
 
 /**
@@ -75,11 +83,11 @@ export async function validateDocument(
   surfaces: Surfaces,
 ): Promise<vscode.Diagnostic[]> {
   if (document.uri.scheme !== "file") {
-    void vscode.window.showWarningMessage("Veridelta validates a file on disk. Save the document first.");
+    void showWarning("Veridelta validates a file on disk. Save the document first.");
     return [];
   }
   if (document.isDirty && !(await document.save())) {
-    void vscode.window.showWarningMessage("Veridelta validates the saved file, and the save did not finish.");
+    void showWarning("Veridelta validates the saved file, and the save did not finish.");
     return [];
   }
   const file = document.uri.fsPath;
@@ -91,7 +99,7 @@ export async function validateDocument(
     if (error instanceof CommandNotFound) {
       void offerSettings(`${error.message} Set veridelta.command to the words that run it.`);
     } else {
-      void vscode.window.showErrorMessage(`Veridelta could not start: ${messageOf(error)}`);
+      void showError(`Veridelta could not start: ${messageOf(error)}`);
     }
     return [];
   }

@@ -13,7 +13,7 @@ import * as vscode from "vscode";
 import type { ArtifactPlan } from "./artifacts";
 import { pickConfiguration } from "./configPicker";
 import { registerMcpProvider, type VerideltaMcpProvider } from "./mcp";
-import type { Surfaces } from "./notify";
+import { recentNotifications, showInformation, type Surfaces } from "./notify";
 import { openArtifacts, openReportOf, runComparison, type RunOutcome } from "./run";
 import { validateDocument } from "./validate";
 
@@ -26,6 +26,8 @@ export interface Api {
   diagnostics: vscode.DiagnosticCollection;
   /** The provider agent mode asks for the Veridelta server. */
   mcpProvider: VerideltaMcpProvider;
+  /** The notifications shown most recently, oldest first, as the user saw them. */
+  notifications(): readonly string[];
 }
 
 export function activate(context: vscode.ExtensionContext): Api {
@@ -40,9 +42,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     vscode.commands.registerCommand("veridelta.validate", async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor === undefined) {
-        void vscode.window.showInformationMessage(
-          "Open a Veridelta configuration file, then run the command.",
-        );
+        void showInformation("Open a Veridelta configuration file, then run the command.");
         return;
       }
       await validateDocument(editor.document, surfaces);
@@ -67,6 +67,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     openArtifacts,
     diagnostics: surfaces.diagnostics,
     mcpProvider,
+    notifications: recentNotifications,
   };
 }
 

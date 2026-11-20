@@ -16,6 +16,7 @@ import {
   withoutAllowHost,
   type McpSettings,
 } from "./mcpArgs";
+import { showWarning } from "./notify";
 import { parseVersion } from "./version";
 
 /** The id `package.json` contributes under `mcpServerDefinitionProviders`. */
@@ -76,7 +77,7 @@ function warnAboutAllowHost(installed: string): void {
     return;
   }
   warnedAboutAllowHost = true;
-  void vscode.window.showWarningMessage(
+  void showWarning(
     `${installed} has no --allow-host, so veridelta.mcp.allowHosts does not apply, and the agent's tools connect to any host a configuration names. A later Veridelta holds them to the hosts the setting lists.`,
   );
 }

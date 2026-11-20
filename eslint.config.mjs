@@ -26,6 +26,24 @@ export default defineConfig(
     },
   },
   {
+    // A notification turns `[label](command:...)` into a link that runs a command.
+    // Messages carry text from configurations and data, so they go through
+    // src/notify.ts, which breaks every link before anything is shown.
+    files: ["src/**/*.ts"],
+    ignores: ["src/notify.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[property.name=/^(show(Error|Warning|Information)Message|withProgress)$/]",
+          message:
+            "Show notifications and progress through src/notify.ts, which keeps links out of the text.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.mjs"],
     extends: [js.configs.recommended],
     languageOptions: { globals: { ...globals.node } },

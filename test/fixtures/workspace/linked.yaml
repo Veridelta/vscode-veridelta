@@ -1,0 +1,6 @@
+# The source names a column like a link, so the error that lists the columns read holds one.
+primary_keys: [id]
+source:
+  path: linked.csv
+target:
+  path: modern.csv

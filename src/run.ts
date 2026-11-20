@@ -14,7 +14,16 @@ import * as vscode from "vscode";
 
 import { artifactPlan, type ArtifactPlan } from "./artifacts";
 import { CommandNotFound, RunCancelled, runVeridelta, type Finished } from "./cli";
-import { logStderr, messageOf, offerSettings, type Surfaces } from "./notify";
+import {
+  logStderr,
+  messageOf,
+  offerSettings,
+  showError,
+  showInformation,
+  showWarning,
+  withProgress,
+  type Surfaces,
+} from "./notify";
 import { openReport } from "./reportView";
 import { parseRunOutput, verdictLine, type RunSummary } from "./summary";
 
@@ -60,18 +69,14 @@ export function openReportOf(outcome: RunOutcome): Promise<vscode.WebviewPanel> 
  */
 export async function openArtifacts(plan: ArtifactPlan | undefined): Promise<string[]> {
   if (plan === undefined) {
-    void vscode.window.showInformationMessage(
-      "This configuration sets no output_path, so the run wrote no discrepancy files.",
-    );
+    void showInformation("This configuration sets no output_path, so the run wrote no discrepancy files.");
     return [];
   }
   const files = plan.candidates
     .map((name) => path.join(plan.folder, name))
     .filter((file) => existsSync(file));
   if (files.length === 0) {
-    void vscode.window.showInformationMessage(
-      `The run wrote no discrepancy files to ${plan.folder}: no rows differ.`,
-    );
+    void showInformation(`The run wrote no discrepancy files to ${plan.folder}: no rows differ.`);
     return [];
   }
   if (plan.textual) {
@@ -82,7 +87,7 @@ export async function openArtifacts(plan: ArtifactPlan | undefined): Promise<str
   }
   await vscode.commands.executeCommand("revealInExplorer", vscode.Uri.file(files[0] ?? plan.folder));
   const noun = files.length === 1 ? "file" : "files";
-  void vscode.window.showInformationMessage(
+  void showInformation(
     `The run wrote ${String(files.length)} ${plan.format} ${noun} to ${plan.folder}. Set output_format to csv to open them as text.`,
   );
   return files;
@@ -92,8 +97,8 @@ export async function openArtifacts(plan: ArtifactPlan | undefined): Promise<str
 async function offerOutcome(outcome: RunOutcome, surfaces: Surfaces): Promise<void> {
   const line = verdictLine(outcome.summary);
   const choice = outcome.summary.isMatch
-    ? await vscode.window.showInformationMessage(line, OPEN_REPORT, OPEN_FILES, SHOW_OUTPUT)
-    : await vscode.window.showWarningMessage(line, OPEN_REPORT, OPEN_FILES, SHOW_OUTPUT);
+    ? await showInformation(line, OPEN_REPORT, OPEN_FILES, SHOW_OUTPUT)
+    : await showWarning(line, OPEN_REPORT, OPEN_FILES, SHOW_OUTPUT);
   if (choice === OPEN_REPORT) {
     await openReportOf(outcome);
   } else if (choice === OPEN_FILES) {
@@ -104,7 +109,7 @@ async function offerOutcome(outcome: RunOutcome, surfaces: Surfaces): Promise<vo
 }
 
 async function showFailure(message: string, surfaces: Surfaces): Promise<void> {
-  const choice = await vscode.window.showErrorMessage(message, SHOW_OUTPUT);
+  const choice = await showError(message, SHOW_OUTPUT);
   if (choice === SHOW_OUTPUT) {
     surfaces.output.show(true);
   }
@@ -127,14 +132,12 @@ export async function runComparison(
   surfaces: Surfaces,
 ): Promise<RunOutcome | undefined> {
   if (uri.scheme !== "file") {
-    void vscode.window.showWarningMessage(
-      "Veridelta runs a configuration file on disk. Save the document first.",
-    );
+    void showWarning("Veridelta runs a configuration file on disk. Save the document first.");
     return undefined;
   }
   const open = vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri.toString());
   if (open?.isDirty === true && !(await open.save())) {
-    void vscode.window.showWarningMessage("Veridelta runs the saved file, and the save did not finish.");
+    void showWarning("Veridelta runs the saved file, and the save did not finish.");
     return undefined;
   }
   const configFile = uri.fsPath;
@@ -144,7 +147,7 @@ export async function runComparison(
   const args = ["run", "-c", configFile, "--json", "--html", reportFile, ...maxRowsArguments()];
   let finished: Finished;
   try {
-    finished = await vscode.window.withProgress(
+    finished = await withProgress(
       {
         location: vscode.ProgressLocation.Notification,
         title: `Veridelta: comparing ${name}`,
@@ -160,22 +163,26 @@ export async function runComparison(
     );
   } catch (error) {
     if (error instanceof RunCancelled) {
-      void vscode.window.showInformationMessage(`Veridelta: the run of ${name} was cancelled.`);
+      void showInformation(`Veridelta: the run of ${name} was cancelled.`);
     } else if (error instanceof CommandNotFound) {
       void offerSettings(`${error.message} Set veridelta.command to the words that run it.`);
     } else {
-      void vscode.window.showErrorMessage(`Veridelta could not start: ${messageOf(error)}`);
+      void showError(`Veridelta could not start: ${messageOf(error)}`);
     }
     return undefined;
   }
   logStderr(surfaces.output, finished.stderr);
   const parsed = parseRunOutput(finished.stdout, finished.code);
   if (parsed.kind === "unparsable") {
+    if (finished.stderr.trim() === "") {
+      logStderr(surfaces.output, finished.stdout);
+    }
     const detail = finished.stderr.trim() || finished.stdout.trim() || `exit code ${String(finished.code)}`;
     void showFailure(`Veridelta gave no summary to read: ${detail}`, surfaces);
     return undefined;
   }
   if (parsed.kind === "error") {
+    surfaces.output.appendLine(`${parsed.error.type}: ${parsed.error.message}`);
     void showFailure(`Veridelta: ${parsed.error.type}: ${parsed.error.message}`, surfaces);
     return undefined;
   }
