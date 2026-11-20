@@ -12,6 +12,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
+import { recentNotifications, withProgress } from "../../src/notify";
 import type { RunOutcome } from "../../src/run";
 import { extension, fixture, openFixture, workspaceFolder } from "./helpers";
 
@@ -205,6 +206,18 @@ describe("Veridelta: Run comparison", function () {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it("breaks links in a progress message too", async () => {
+    await withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Veridelta: test" },
+      (progress) => {
+        progress.report({ message: "reading [Open](command:workbench.action.terminal.new)" });
+        return Promise.resolve();
+      },
+    );
+    const shown = recentNotifications().find((message) => message.startsWith("reading"));
+    assert.equal(shown, "reading [Open] (command:workbench.action.terminal.new)");
   });
 
   it("gives nothing for a configuration that does not load", async () => {

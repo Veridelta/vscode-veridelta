@@ -6,6 +6,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+// The window functions whose text VS Code renders with `[label](command:...)` links.
+const RENDERED =
+  "/^(show(Error|Warning|Information)Message|withProgress|showInputBox|createInputBox|createQuickPick)$/";
+const THROUGH_NOTIFY =
+  "Show notifications, progress and input prompts through src/notify.ts, which keeps links out of the text.";
+
 export default defineConfig(
   globalIgnores(["dist/", "out/", ".vscode-test/", "node_modules/"]),
   {
@@ -34,12 +40,9 @@ export default defineConfig(
     rules: {
       "no-restricted-syntax": [
         "error",
-        {
-          selector:
-            "MemberExpression[property.name=/^(show(Error|Warning|Information)Message|withProgress)$/]",
-          message:
-            "Show notifications and progress through src/notify.ts, which keeps links out of the text.",
-        },
+        { selector: `MemberExpression[property.name=${RENDERED}]`, message: THROUGH_NOTIFY },
+        // `const { showErrorMessage } = vscode.window` would pass the rule above.
+        { selector: `ObjectPattern > Property[key.name=${RENDERED}]`, message: THROUGH_NOTIFY },
       ],
     },
   },

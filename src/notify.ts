@@ -54,7 +54,7 @@ export function showError<T extends string>(message: string, ...items: T[]): The
   return vscode.window.showErrorMessage(shown(message), ...items);
 }
 
-/** Run a task under a progress indicator whose title is shown as plain text. */
+/** Run a task under a progress indicator whose title and messages are shown as plain text. */
 export function withProgress<R>(
   options: vscode.ProgressOptions,
   task: (
@@ -63,7 +63,20 @@ export function withProgress<R>(
   ) => Thenable<R>,
 ): Thenable<R> {
   const title = options.title === undefined ? undefined : shown(options.title);
-  return vscode.window.withProgress(title === undefined ? options : { ...options, title }, task);
+  return vscode.window.withProgress(
+    title === undefined ? options : { ...options, title },
+    (progress, token) =>
+      task(
+        {
+          report: (value) => {
+            progress.report(
+              value.message === undefined ? value : { ...value, message: shown(value.message) },
+            );
+          },
+        },
+        token,
+      ),
+  );
 }
 
 export function messageOf(error: unknown): string {
