@@ -58,6 +58,25 @@ describe("Veridelta: Run comparison", function () {
     assert.equal(kept.length, 5);
   });
 
+  it("writes a report that needs nothing its policy forbids", async () => {
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("veridelta.yaml"));
+    assert.ok(outcome);
+    const html = fs.readFileSync(outcome.reportFile, "utf8");
+    // The data is escaped, so every tag here comes from Veridelta's own template or script.
+    const tags = html.match(/<[a-zA-Z][^>]*>/g) ?? [];
+    const forbidden = tags.filter(
+      (tag) =>
+        /^<(link|iframe|object|embed|base|form)\b/i.test(tag) ||
+        /\sstyle\s*=/i.test(tag) ||
+        /\son[a-z]+\s*=/i.test(tag) ||
+        /\ssrc\s*=\s*(?!["']?data:)/i.test(tag),
+    );
+    assert.deepEqual(forbidden, [], "the policy allows only data: images and the nonce'd style and script");
+    const styles = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? "";
+    assert.doesNotMatch(styles, /@import|url\(\s*(?!["']?data:)/i);
+  });
+
   it("opens no empty tab for a report it will not show", async () => {
     const api = await extension();
     const outcome = await api.runComparison(fixture("veridelta.yaml"));
