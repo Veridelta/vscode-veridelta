@@ -6,7 +6,8 @@
  *
  * Veridelta's report is one document with exactly one bare `<style>`, one bare
  * `<script>`, and one charset meta, and it loads nothing from anywhere; a test
- * in Veridelta's repository holds it to that. This module imports nothing from
+ * in Veridelta's repository holds it to that. Its images, such as the symbol
+ * beside the title, are embedded as `data:` URLs, so the policy allows those. This module imports nothing from
  * VS Code, so its tests run under plain Mocha.
  */
 
@@ -46,7 +47,7 @@ export function withCsp(html: string, nonce: string): string {
   if (missing.length > 0) {
     throw new Error(`The report is not the document Veridelta writes. It needs ${missing.join(", ")}.`);
   }
-  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">`;
+  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">`;
   return html
     .replace(CHARSET, `${CHARSET}\n${policy}`)
     .replace("<style>", `<style nonce="${nonce}">`)
