@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 
 import {
   DEFAULT_MAX_ROWS,
@@ -9,8 +11,10 @@ import {
   hasAllowHost,
   maxRowsOf,
   MOST_MAX_ROWS,
+  HOST_PATTERN,
   rootFolders,
   serverCommand,
+  splitHosts,
   takesAllowHost,
   withoutAllowHost,
 } from "../../src/mcpArgs";
@@ -139,5 +143,38 @@ describe("rootFolders", () => {
       rootFolders(["/a"], () => false),
       [],
     );
+  });
+});
+
+describe("splitHosts", () => {
+  it("keeps hosts and addresses Veridelta takes, and drops the rest", () => {
+    assert.deepEqual(
+      splitHosts([
+        "db.internal",
+        "10.0.0.5",
+        "[::1]",
+        "my_bucket",
+        "Db.Internal",
+        "https://x.example",
+        "x.example:5432",
+        "",
+        "a..b",
+      ]),
+      {
+        kept: ["db.internal", "10.0.0.5", "[::1]", "my_bucket"],
+        dropped: ["Db.Internal", "https://x.example", "x.example:5432", "", "a..b"],
+      },
+    );
+  });
+
+  it("uses the pattern package.json declares for the setting", () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(__dirname, "..", "..", "..", "package.json"), "utf8"),
+    ) as {
+      contributes: { configuration: { properties: Record<string, { items?: { pattern?: string } }> } };
+    };
+    const declared =
+      manifest.contributes.configuration.properties["veridelta.mcp.allowHosts"]?.items?.pattern;
+    assert.equal(declared, HOST_PATTERN.source);
   });
 });

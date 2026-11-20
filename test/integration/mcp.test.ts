@@ -128,6 +128,22 @@ describe("Veridelta in agent mode", function () {
     assert.deepEqual(resolved.args, expected);
   });
 
+  it("leaves out a host Veridelta would refuse, and names it", async () => {
+    const api = await extension();
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await vscode.workspace
+      .getConfiguration("veridelta.mcp")
+      .update("allowHosts", ["db.internal", "https://bad.example"], vscode.ConfigurationTarget.Global);
+    await changed;
+    const [server] = api.mcpProvider.provideMcpServerDefinitions();
+    assert.ok(server);
+    assert.ok(!server.args.some((arg) => arg.includes("bad.example")), server.args.join(" "));
+    assert.ok(
+      api.notifications().some((message) => message.includes("https://bad.example")),
+      "a notification names the host left out",
+    );
+  });
+
   it("ignores what a repository's own settings grant the agent", async () => {
     const api = await extension();
     const file = path.join(workspaceFolder().fsPath, ".vscode", "settings.json");

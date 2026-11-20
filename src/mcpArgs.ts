@@ -38,6 +38,25 @@ export const DEFAULT_SETTINGS: McpSettings = {
   allowHosts: [],
 };
 
+/** The hosts `--allow-host` takes: lowercase, no scheme or port, as `package.json` also declares. */
+export const HOST_PATTERN = /^([a-z0-9_-]+(\.[a-z0-9_-]+)*|\[[0-9a-f:.]+\])$/;
+
+/**
+ * Split the hosts into those Veridelta takes and those it would refuse.
+ *
+ * One host Veridelta refuses stops the server from starting at all, so such
+ * entries are left out. Nothing is lowercased: a bucket named in another case
+ * is another bucket.
+ */
+export function splitHosts(hosts: readonly string[]): { kept: string[]; dropped: string[] } {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const host of hosts) {
+    (HOST_PATTERN.test(host) ? kept : dropped).push(host);
+  }
+  return { kept, dropped };
+}
+
 /** The flag that names a host the server may connect to, which Veridelta after 0.42.2 takes. */
 export const ALLOW_HOST = "--allow-host";
 

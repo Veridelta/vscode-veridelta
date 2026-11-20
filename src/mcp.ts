@@ -15,6 +15,7 @@ import {
   maxRowsOf,
   rootFolders,
   serverCommand,
+  splitHosts,
   takesAllowHost,
   withoutAllowHost,
   type McpSettings,
@@ -30,6 +31,21 @@ const LABEL = "Veridelta";
 /** Whether this session has already said that the installed Veridelta does not take `--allow-host`. */
 let warnedAboutAllowHost = false;
 
+/** The allowHosts entries this session has already named as left out. */
+let namedDropped = "";
+
+/** Say once which allowHosts entries are left out, since Veridelta would refuse to start with them. */
+function warnAboutDropped(dropped: readonly string[]): void {
+  const names = dropped.map((host) => `'${host}'`).join(", ");
+  if (dropped.length === 0 || names === namedDropped) {
+    return;
+  }
+  namedDropped = names;
+  void showWarning(
+    `veridelta.mcp.allowHosts names ${names}, which Veridelta does not take, so the agent's server starts without it. Write each host in lowercase, with no scheme or port.`,
+  );
+}
+
 function readSettings(): McpSettings {
   const configuration = vscode.workspace.getConfiguration("veridelta.mcp");
   const allowRowValues: unknown = configuration.get("allowRowValues");
@@ -40,10 +56,16 @@ function readSettings(): McpSettings {
     allowRowValues: allowRowValues === true,
     allowQueries: allowQueries === true,
     maxRows: maxRowsOf(maxRows),
-    allowHosts: Array.isArray(allowHosts)
-      ? allowHosts.filter((host): host is string => typeof host === "string" && host.length > 0)
-      : [],
+    allowHosts: hostsOf(allowHosts),
   };
+}
+
+/** The hosts Veridelta takes, from the setting's value; the others are named once and left out. */
+function hostsOf(value: unknown): string[] {
+  const hosts = Array.isArray(value) ? value.filter((host): host is string => typeof host === "string") : [];
+  const { kept, dropped } = splitHosts(hosts);
+  warnAboutDropped(dropped);
+  return kept;
 }
 
 /** Whether a path is a folder on disk now. */
