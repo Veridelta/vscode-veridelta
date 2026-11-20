@@ -162,7 +162,8 @@ export function olderWarning(
   support: HostSupport,
   hostsSet: boolean,
 ): string | undefined {
-  if (support === "unknown" && hostsSet && !shown.unknown && !shown.lacks) {
+  // Silent only after a notice that already named the hosts, which says more.
+  if (support === "unknown" && hostsSet && !shown.unknown && !shown.lacksHosts) {
     shown.unknown = true;
     return "The extension could not tell whether the installed Veridelta takes --allow-host, so the agent's server starts without the hosts veridelta.mcp.allowHosts lists. A Veridelta without --allow-host lets the tools connect to any host a configuration names. The next start of the server asks again.";
   }

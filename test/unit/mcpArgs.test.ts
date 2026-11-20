@@ -222,6 +222,12 @@ describe("olderWarning", () => {
     assert.equal(olderWarning(shown, "Veridelta 0.42.2", "lacks", true), undefined, "once");
   });
 
+  it("still says it could not tell, with hosts set, after a warning that did not name them", () => {
+    const shown = { unknown: false, lacks: false, lacksHosts: false };
+    assert.doesNotMatch(olderWarning(shown, "Veridelta 0.42.2", "lacks", false) ?? "", /does not apply/);
+    assert.match(olderWarning(shown, "Veridelta", "unknown", true) ?? "", /could not tell/);
+  });
+
   it("names the hosts setting only when hosts are set", () => {
     assert.doesNotMatch(
       olderWarning({ unknown: false, lacks: false, lacksHosts: false }, "Veridelta 0.42.2", "lacks", false) ??
