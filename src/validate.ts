@@ -10,7 +10,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { cliVersion, CommandNotFound, RunCancelled, RunTimedOut, runVeridelta, type Finished } from "./cli";
-import { rangeFor } from "./locate";
+import { locator, type Range } from "./locate";
 import {
   logStderr,
   messageOf,
@@ -35,8 +35,8 @@ const running = new Map<string, AbortController>();
 /** Whether this session has already explained why problems sit on the first line. */
 let hintedAboutLocations = false;
 
-function toDiagnostic(text: string, problem: Problem): vscode.Diagnostic {
-  const range = rangeFor(text, problem.location);
+function toDiagnostic(locate: (location: Problem["location"]) => Range, problem: Problem): vscode.Diagnostic {
+  const range = locate(problem.location);
   const diagnostic = new vscode.Diagnostic(
     new vscode.Range(range.start.line, range.start.character, range.end.line, range.end.character),
     problem.message,
@@ -158,13 +158,13 @@ export async function validateDocument(
   if (parsed.kind === "report" && parsed.report.findings === undefined) {
     void hintAboutLocations(folder);
   }
-  const text = document.getText();
+  const locate = locator(document.getText());
   // An edit made while Veridelta ran can move lines, so a problem placed by its line number is
   // dropped then. A problem placed by its path still finds its setting in the edited text.
   const edited = document.version !== savedVersion;
   const diagnostics = problemsOf(parsed)
     .filter((problem) => !edited || problem.location?.line === undefined)
-    .map((problem) => toDiagnostic(text, problem));
+    .map((problem) => toDiagnostic(locate, problem));
   surfaces.diagnostics.set(document.uri, diagnostics);
   return diagnostics;
 }

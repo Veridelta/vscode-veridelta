@@ -3,7 +3,7 @@
 
 import * as assert from "node:assert/strict";
 
-import { firstLine, rangeFor, type Range } from "../../src/locate";
+import { firstLine, locator, rangeFor, type Range } from "../../src/locate";
 
 const CONFIG = [
   "source:",
@@ -77,5 +77,43 @@ describe("rangeFor", () => {
   it("does not throw on text that does not parse", () => {
     const placed = rangeFor("a: [1,\n", { path: ["a"] });
     assert.equal(placed.start.line, 0);
+  });
+});
+
+describe("locator", () => {
+  /** A configuration with many rules, each a setting a finding can name. */
+  function manyRules(count: number): string {
+    const rules = Array.from(
+      { length: count },
+      (_, index) => `  - column: c${String(index)}\n    tolerance: 0.1\n`,
+    );
+    return `primary_keys: [id]\nsource:\n  path: a.csv\ntarget:\n  path: b.csv\nrules:\n${rules.join("")}`;
+  }
+
+  it("places each location as rangeFor does", () => {
+    const locate = locator(CONFIG);
+    for (const location of [
+      { path: ["source", "format"] },
+      { path: ["rules", 0, "case_insensitve"] },
+      { path: ["rules", 1] },
+      { line: 2, column: 5 },
+      { line: 3 },
+      undefined,
+    ]) {
+      assert.deepEqual(locate(location), rangeFor(CONFIG, location));
+    }
+  });
+
+  it("places many findings in about the time of one parse", () => {
+    const text = manyRules(400);
+    const locations = Array.from({ length: 2000 }, (_, index) => ({
+      path: ["rules", index % 400, "tolerance"],
+    }));
+    const started = performance.now();
+    const locate = locator(text);
+    const ranges = locations.map((location) => locate(location));
+    const elapsed = performance.now() - started;
+    assert.deepEqual(ranges[401], rangeFor(text, locations[401]));
+    assert.ok(elapsed < 2000, `placing 2000 findings took ${String(Math.round(elapsed))} ms`);
   });
 });

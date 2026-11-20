@@ -51,8 +51,7 @@ export function firstLine(text: string): Range {
 }
 
 /** A line counted from 1, from a column counted from 1 to the line's end. */
-function lineRange(text: string, line: number, column: number | undefined): Range {
-  const lines = text.split("\n");
+function lineRange(lines: readonly string[], line: number, column: number | undefined): Range {
   const index = Math.min(Math.max(line - 1, 0), lines.length - 1);
   const content = lines[index] ?? "";
   const length = content.endsWith("\r") ? content.length - 1 : content.length;
@@ -121,14 +120,52 @@ function toPosition(counter: LineCounter, offset: number): Position {
   return { line: line - 1, character: col - 1 };
 }
 
-function pathRange(text: string, path: Step[]): Range | undefined {
-  const lineCounter = new LineCounter();
-  const document = parseDocument(text, { lineCounter });
-  const span = place(text, document, path);
+/** The document read once, so every finding in one validate shares one parse. */
+interface Parsed {
+  document: Document;
+  lineCounter: LineCounter;
+}
+
+function pathRange(text: string, parsed: Parsed, path: Step[]): Range | undefined {
+  const span = place(text, parsed.document, path);
   if (span === undefined) {
     return undefined;
   }
-  return { start: toPosition(lineCounter, span.start), end: toPosition(lineCounter, span.end) };
+  return { start: toPosition(parsed.lineCounter, span.start), end: toPosition(parsed.lineCounter, span.end) };
+}
+
+/**
+ * Return a function that places a finding's location in the text.
+ *
+ * The text is split and parsed at most once, however many findings it places,
+ * so a validate with many findings costs about one parse.
+ *
+ * @param text The document's text.
+ */
+export function locator(text: string): (location: FindingLocation | undefined) => Range {
+  let lines: string[] | undefined;
+  let parsed: Parsed | undefined;
+  return (location) => {
+    if (location === undefined) {
+      return firstLine(text);
+    }
+    if (location.line !== undefined) {
+      lines ??= text.split("\n");
+      return lineRange(lines, location.line, location.column);
+    }
+    if (location.path !== undefined) {
+      try {
+        if (parsed === undefined) {
+          const lineCounter = new LineCounter();
+          parsed = { document: parseDocument(text, { lineCounter }), lineCounter };
+        }
+        return pathRange(text, parsed, location.path) ?? firstLine(text);
+      } catch {
+        return firstLine(text);
+      }
+    }
+    return firstLine(text);
+  };
 }
 
 /**
@@ -138,18 +175,5 @@ function pathRange(text: string, path: Step[]): Range | undefined {
  * @param location A location from `findings`, or undefined for a problem the text does not place.
  */
 export function rangeFor(text: string, location: FindingLocation | undefined): Range {
-  if (location === undefined) {
-    return firstLine(text);
-  }
-  if (location.line !== undefined) {
-    return lineRange(text, location.line, location.column);
-  }
-  if (location.path !== undefined) {
-    try {
-      return pathRange(text, location.path) ?? firstLine(text);
-    } catch {
-      return firstLine(text);
-    }
-  }
-  return firstLine(text);
+  return locator(text)(location);
 }
