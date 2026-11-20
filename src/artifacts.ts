@@ -200,9 +200,9 @@ interface Lookup {
  * `<<` beats an earlier one, and the last duplicate wins. Each mapping is
  * looked at once per key, so repeated aliases cost no more than the text.
  * A mapping that merges a mapping holding it is a loop: Veridelta main
- * refuses such a file, and when the value comes through the loop, PyYAML's
- * answer depends on the order it flattens in place, so the lookup notes the
- * loop rather than guess. An own pair, which beats every merge, is read as is.
+ * refuses such a file, and PyYAML flattens it in place, so what a mapping
+ * holds can depend on the way it is reached. The lookup notes any loop it
+ * meets rather than guess.
  */
 function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): unknown {
   if (seen.done.has(map)) {
@@ -211,16 +211,6 @@ function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): un
   if (seen.open.has(map)) {
     seen.looped = true;
     return MISSING;
-  }
-  // Own pairs come after every merge, so the last own pair wins and the
-  // merges, loops included, do not matter.
-  const own = map.items.filter(
-    (pair) => !isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key,
-  );
-  const last = own.at(-1);
-  if (last !== undefined) {
-    seen.done.set(map, last.value);
-    return last.value;
   }
   seen.open.add(map);
   let found: unknown = MISSING;
@@ -234,6 +224,11 @@ function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): un
       }
     }
   }
+  for (const pair of map.items) {
+    if (!isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key) {
+      found = pair.value;
+    }
+  }
   seen.open.delete(map);
   seen.done.set(map, found);
   return found;
@@ -244,6 +239,17 @@ class MergeLoop extends Error {}
 
 /** A top-level setting's value, with merges and aliases followed as Veridelta's YAML reader follows them. */
 function setting(document: Document, map: YAMLMap, key: string): unknown {
+  // The top mapping's own pairs stay last however PyYAML flattens its merges,
+  // loops included, so its last own pair is the answer. Deeper down, a loop can
+  // change what a mapping holds when it is reached a second way, so there the
+  // merges are always followed.
+  const own = map.items.filter(
+    (pair) => !isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key,
+  );
+  const last = own.at(-1);
+  if (last !== undefined) {
+    return scalarValue(resolved(document, last.value));
+  }
   const seen: Lookup = { done: new Map(), open: new Set(), looped: false };
   const node = lookup(document, map, key, seen);
   if (node === MISSING) {

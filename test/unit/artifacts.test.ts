@@ -135,15 +135,20 @@ describe("planArtifacts", () => {
   });
 
   it("reads a setting a loop cannot change, as PyYAML does", () => {
-    // A mapping's own pair beats its merges, so a loop among the merges does not matter.
+    // The top mapping's own pair beats its merges, so a loop among them does not matter.
     assert.equal(
       planArtifacts(`--- &r\n<<: *r\noutput_path: own\n${BASE}`, FOLDER).plan?.folder,
       path.resolve(FOLDER, "own"),
     );
-    assert.equal(
-      planArtifacts(`a: &a\n  <<: *a\n  output_path: one\n<<: *a\n${BASE}`, FOLDER).plan?.folder,
-      path.resolve(FOLDER, "one"),
-    );
+    // A loop below the top can change what a mapping holds when it is reached
+    // another way, so a value that comes through one stays unread. PyYAML gives q here.
+    const c1 =
+      "<<: &y\n  <<: &m\n    <<: &z\n      <<: *y\n    output_path: m\n<<: &w\n  <<: {output_path: q}\n  <<: *z\n";
+    assert.deepEqual(planArtifacts(`${c1}${BASE}`, FOLDER), { plan: undefined, readable: false });
+    assert.deepEqual(planArtifacts(`a: &a\n  <<: *a\n  output_path: one\n<<: *a\n${BASE}`, FOLDER), {
+      plan: undefined,
+      readable: false,
+    });
     // No mapping a loop reaches sets it, so the configuration sets none.
     assert.deepEqual(planArtifacts(`--- &r\n<<: *r\n${BASE}`, FOLDER), { plan: undefined, readable: true });
   });
