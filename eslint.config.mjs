@@ -43,11 +43,13 @@ export default defineConfig(
         { selector: `MemberExpression[property.name=${RENDERED}]`, message: THROUGH_NOTIFY },
         // `const { showErrorMessage } = vscode.window` would pass the rule above.
         { selector: `ObjectPattern > Property[key.name=${RENDERED}]`, message: THROUGH_NOTIFY },
-        // So would the names written as strings, or read with Reflect.
-        { selector: `ObjectPattern > Property[key.value=${RENDERED}]`, message: THROUGH_NOTIFY },
-        { selector: `MemberExpression[property.value=${RENDERED}]`, message: THROUGH_NOTIFY },
+        // So would the names written as strings anywhere: a computed key, a
+        // member access, a Reflect.get argument or a variable's value.
+        { selector: `Literal[value=${RENDERED}]`, message: THROUGH_NOTIFY },
+        { selector: `TemplateElement[value.cooked=${RENDERED}]`, message: THROUGH_NOTIFY },
+        // And vscode.window itself, handed on whole or read with a computed name.
         {
-          selector: `CallExpression[callee.object.name="Reflect"] > Literal[value=${RENDERED}]`,
+          selector: `MemberExpression[object.name="vscode"][property.name="window"]:not(MemberExpression[computed=false] > .object)`,
           message: THROUGH_NOTIFY,
         },
       ],

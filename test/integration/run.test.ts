@@ -12,7 +12,14 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { plainProgress, recentNotifications, withProgress } from "../../src/notify";
+import {
+  plainProgress,
+  recentNotifications,
+  showError,
+  showInformation,
+  showWarning,
+  withProgress,
+} from "../../src/notify";
 import type { RunOutcome } from "../../src/run";
 import { extension, fixture, openFixture, workspaceFolder } from "./helpers";
 
@@ -254,6 +261,49 @@ describe("Veridelta: Run comparison", function () {
     );
     const shown = recentNotifications().find((message) => message.startsWith("reading"));
     assert.equal(shown, "reading [Open] (command:workbench.action.terminal.new)");
+  });
+
+  it("hands VS Code every notification and progress text with its links broken", async () => {
+    const window = vscode.window as unknown as Record<string, unknown>;
+    const names = ["withProgress", "showErrorMessage", "showWarningMessage", "showInformationMessage"];
+    const originals = names.map((name) => window[name]);
+    const seen: unknown[] = [];
+    try {
+      window.withProgress = (
+        options: vscode.ProgressOptions,
+        task: (progress: vscode.Progress<{ message?: string }>) => Thenable<unknown>,
+      ) => {
+        seen.push({ title: options.title });
+        return task({ report: (value) => seen.push(value) });
+      };
+      for (const name of names.slice(1)) {
+        window[name] = (message: string) => {
+          seen.push({ [name]: message });
+          return Promise.resolve(undefined);
+        };
+      }
+      await withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "t [a](command:x)" },
+        (progress) => {
+          progress.report({ message: "m [b](command:y)" });
+          return Promise.resolve();
+        },
+      );
+      await showError("e [c](command:z)");
+      await showWarning("w [d](command:z)");
+      await showInformation("i [e](command:z)");
+    } finally {
+      names.forEach((name, index) => {
+        window[name] = originals[index];
+      });
+    }
+    assert.deepEqual(seen, [
+      { title: "t [a] (command:x)" },
+      { message: "m [b] (command:y)" },
+      { showErrorMessage: "e [c] (command:z)" },
+      { showWarningMessage: "w [d] (command:z)" },
+      { showInformationMessage: "i [e] (command:z)" },
+    ]);
   });
 
   it("passes on a progress message only with its links broken", () => {
