@@ -183,6 +183,46 @@ describe("runProgram", function () {
     assert.ok(fs.existsSync(done), "the child finished its cleanup before the tree was killed");
   });
 
+  it("settles a run that finishes while a process outside its group holds its output", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const pidFile = path.join(folder, "held.pid");
+    const grandchild = `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30000);`;
+    const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(grandchild)}], { stdio: "inherit", detached: true }); process.stdout.write("done"); setTimeout(() => process.exit(0), 300);`;
+    const started = Date.now();
+    try {
+      const finished = await runProgram(NODE, ["-e", wrapper], { cwd: folder, graceMs: 300 });
+      assert.deepEqual(finished, { stdout: "done", stderr: "", code: 0 });
+      assert.ok(Date.now() - started < 5000, `settled in ${String(Date.now() - started)} ms`);
+    } finally {
+      await until(
+        () => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "",
+        "the child starts",
+      );
+      process.kill(Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL");
+    }
+  });
+
+  it("gives a child in the group its grace period, whatever holds its output", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const done = path.join(folder, "cleaned-quiet");
+    const child = `process.on("SIGTERM", () => setTimeout(() => { require("fs").writeFileSync(${JSON.stringify(done)}, "1"); process.exit(0); }, 500)); setInterval(() => {}, 1000);`;
+    const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(child)}], { stdio: "ignore" }); setInterval(() => {}, 1000);`;
+    const controller = new AbortController();
+    const running = runProgram(NODE, ["-e", wrapper], {
+      cwd: folder,
+      signal: controller.signal,
+      graceMs: 3000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    controller.abort();
+    await assert.rejects(running, RunCancelled);
+    await until(() => fs.existsSync(done), "the child finishes its cleanup", 3000);
+  });
+
   it("ends a run that prints more than it may keep", async () => {
     await assert.rejects(
       runProgram(NODE, ["-e", 'process.stdout.write("x".repeat(4096)); setInterval(() => {}, 1000)'], {

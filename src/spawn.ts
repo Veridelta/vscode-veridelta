@@ -148,6 +148,14 @@ export function runProgram(program: string, args: string[], options: SpawnOption
     let stopped: Error | undefined;
     let forceTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
+    let drainTimer: NodeJS.Timeout | undefined;
+
+    // A process that left the group can hold the output pipes past the end of
+    // the run, and 'close' waits for every holder. Stop reading them.
+    const release = (): void => {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    };
 
     const stop = (reason: Error): void => {
       if (stopped !== undefined) {
@@ -157,11 +165,8 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       endTree(child, false);
       forceTimer = setTimeout(() => {
         endTree(child, true);
-        // A process that left the group can still hold the output pipes, and
-        // 'close' waits for every holder. The tree is being ended, so stop
-        // waiting for it.
-        child.stdout?.destroy();
-        child.stderr?.destroy();
+        live.delete(child);
+        release();
       }, graceMs);
     };
     const onAbort = (): void => {
@@ -191,13 +196,26 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       }
     });
 
+    // A program that ended on its own has written all it will; what a process
+    // outside the group still holds is read for a grace period, then let go.
+    child.on("exit", () => {
+      if (stopped === undefined) {
+        drainTimer = setTimeout(release, graceMs);
+      }
+    });
+
     let settled = false;
     const finish = (): void => {
       settled = true;
-      live.delete(child);
       signal?.removeEventListener("abort", onAbort);
       clearTimeout(timeoutTimer);
-      clearTimeout(forceTimer);
+      clearTimeout(drainTimer);
+      if (stopped === undefined) {
+        live.delete(child);
+        clearTimeout(forceTimer);
+      }
+      // A stopped tree keeps its pending kill: the rest of the group gets its
+      // grace period, then the timer kills it, so nothing outlives the run.
     };
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (settled) {
@@ -216,8 +234,6 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       }
       finish();
       if (stopped !== undefined) {
-        // A stopped tree is ended outright, so nothing it started outlives it.
-        endTree(child, true);
         reject(stopped);
         return;
       }
