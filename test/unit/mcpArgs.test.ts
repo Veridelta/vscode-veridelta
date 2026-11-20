@@ -195,7 +195,7 @@ describe("serverEnv", () => {
 
 describe("olderWarning", () => {
   it("still warns about a Veridelta without --allow-host after a probe that could not tell", () => {
-    const shown = { unknown: false, lacks: false };
+    const shown = { unknown: false, lacks: false, lacksHosts: false };
     assert.match(olderWarning(shown, "Veridelta 0.42.2", "unknown", true) ?? "", /could not tell/);
     assert.match(
       olderWarning(shown, "Veridelta 0.42.2", "lacks", true) ?? "",
@@ -206,19 +206,31 @@ describe("olderWarning", () => {
   });
 
   it("says nothing for a Veridelta that takes --allow-host, or for an unknown answer with no hosts set", () => {
-    const shown = { unknown: false, lacks: false };
+    const shown = { unknown: false, lacks: false, lacksHosts: false };
     assert.equal(olderWarning(shown, "Veridelta 0.43.0", "takes", true), undefined);
     assert.equal(olderWarning(shown, "Veridelta", "unknown", false), undefined);
-    assert.deepEqual(shown, { unknown: false, lacks: false });
+    assert.deepEqual(shown, { unknown: false, lacks: false, lacksHosts: false });
+  });
+
+  it("says the hosts are left out when they are set after the first warning", () => {
+    const shown = { unknown: false, lacks: false, lacksHosts: false };
+    assert.doesNotMatch(olderWarning(shown, "Veridelta 0.42.2", "lacks", false) ?? "", /does not apply/);
+    assert.match(
+      olderWarning(shown, "Veridelta 0.42.2", "lacks", true) ?? "",
+      /allowHosts does not apply to it/,
+    );
+    assert.equal(olderWarning(shown, "Veridelta 0.42.2", "lacks", true), undefined, "once");
   });
 
   it("names the hosts setting only when hosts are set", () => {
     assert.doesNotMatch(
-      olderWarning({ unknown: false, lacks: false }, "Veridelta 0.42.2", "lacks", false) ?? "",
+      olderWarning({ unknown: false, lacks: false, lacksHosts: false }, "Veridelta 0.42.2", "lacks", false) ??
+        "",
       /does not apply/,
     );
     assert.match(
-      olderWarning({ unknown: false, lacks: false }, "Veridelta 0.42.2", "lacks", true) ?? "",
+      olderWarning({ unknown: false, lacks: false, lacksHosts: false }, "Veridelta 0.42.2", "lacks", true) ??
+        "",
       /does not apply/,
     );
   });

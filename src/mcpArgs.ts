@@ -143,6 +143,8 @@ export type HostSupport = "takes" | "lacks" | "unknown";
 export interface OlderWarnings {
   unknown: boolean;
   lacks: boolean;
+  /** Whether a warning about a Veridelta without --allow-host has named the hosts setting. */
+  lacksHosts: boolean;
 }
 
 /**
@@ -166,10 +168,15 @@ export function olderWarning(
   }
   if (support === "lacks" && !shown.lacks) {
     shown.lacks = true;
+    shown.lacksHosts = hostsSet;
     const hosts = hostsSet
       ? " veridelta.mcp.allowHosts does not apply to it, so its hosts are left out."
       : "";
-    return `${installed} has no --allow-host. With it, the agent's tools can connect to any host a configuration names, and a tool's error can quote a value from the data with veridelta.mcp.allowRowValues off.${hosts} A Veridelta release after 0.42.2 holds the tools to the hosts that setting lists and keeps database errors that quote values from the agent.`;
+    return `${installed} has no --allow-host. With it, the agent's tools can connect to any host a configuration names, and a tool's error can quote a value from the data with veridelta.mcp.allowRowValues off.${hosts} A Veridelta release after 0.42.2 holds the tools to the hosts veridelta.mcp.allowHosts lists and keeps database errors that quote values from the agent.`;
+  }
+  if (support === "lacks" && hostsSet && !shown.lacksHosts) {
+    shown.lacksHosts = true;
+    return `${installed} has no --allow-host, so veridelta.mcp.allowHosts does not apply to it, and its hosts are left out.`;
   }
   return undefined;
 }

@@ -34,7 +34,7 @@ const LABEL = "Veridelta";
 const PROBE_TIMEOUT_MS = 15_000;
 
 /** The warnings about an older Veridelta this session has already shown. */
-const olderWarnings: OlderWarnings = { unknown: false, lacks: false };
+const olderWarnings: OlderWarnings = { unknown: false, lacks: false, lacksHosts: false };
 
 /** The allowHosts entries this session has already named as left out. */
 let namedDropped = "";
@@ -239,8 +239,8 @@ export class VerideltaMcpProvider
    * gives up after a while, and the server then starts without its answer:
    * with no version, and without the hosts, and the next start probes again.
    * A definite answer about `--allow-host` is kept for the session, so after
-   * an upgrade of Veridelta the window needs a reload. A notification says
-   * once what an older Veridelta does not hold.
+   * an upgrade of Veridelta the window needs a reload. A notification says what an older Veridelta does not hold,
+   * each kind of warning once.
    */
   async resolveMcpServerDefinition(
     kept: vscode.McpStdioServerDefinition,
