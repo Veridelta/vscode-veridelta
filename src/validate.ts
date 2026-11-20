@@ -27,6 +27,9 @@ import { isAtLeast, LOCATIONS_VERSION, MINIMUM_VERSION, parseVersion } from "./v
 
 const SOURCE = "veridelta";
 
+/** How long the version check behind a hint may take before the hint goes without it. */
+const VERSION_TIMEOUT_MS = 15_000;
+
 /** How long one validate may run. A first `uv run` can install the project, so it is generous. */
 const VALIDATE_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -53,7 +56,7 @@ async function hintAboutLocations(folder: string): Promise<void> {
     return;
   }
   hintedAboutLocations = true;
-  const text = await cliVersion(folder);
+  const text = await cliVersion(folder, { timeoutMs: VERSION_TIMEOUT_MS });
   const version = text === undefined ? undefined : parseVersion(text);
   const installed = version === undefined ? "The installed Veridelta" : `Veridelta ${version.join(".")}`;
   void showInformation(
@@ -63,7 +66,7 @@ async function hintAboutLocations(folder: string): Promise<void> {
 
 /** Explain output this extension cannot read, naming the version floor when that is the cause. */
 async function explainUnreadable(detail: string, folder: string): Promise<void> {
-  const text = await cliVersion(folder);
+  const text = await cliVersion(folder, { timeoutMs: VERSION_TIMEOUT_MS });
   const version = text === undefined ? undefined : parseVersion(text);
   if (version !== undefined && !isAtLeast(text ?? "", MINIMUM_VERSION)) {
     void showError(

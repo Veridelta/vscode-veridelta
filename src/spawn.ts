@@ -68,10 +68,13 @@ export interface SpawnOptions {
   maxBytes?: number;
   /** How long a tree has after the first signal before it is killed outright. */
   graceMs?: number;
+  /** How long to wait, once the program has exited, for the rest of its group before letting go of the output. */
+  drainMs?: number;
 }
 
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const GRACE_MS = 2000;
+const DRAIN_MS = 30_000;
 
 /** The processes still running, so `endAll` can end them when the extension stops. */
 const live = new Set<ChildProcess>();
@@ -106,8 +109,9 @@ function endTree(child: ChildProcess, force: boolean): void {
 /**
  * Whether anything in a child's process group still runs.
  *
- * On Windows there is no group to ask, and a stop has already ended the
- * tree with taskkill /F, so nothing is left to wait for.
+ * On Windows there is no group to ask, so this says no: a stop has already
+ * ended the tree with taskkill /F, and after a program exits on its own, its
+ * output is read only for the grace period, as before.
  */
 function groupRuns(child: ChildProcess): boolean {
   const pid = child.pid;
@@ -141,6 +145,7 @@ export function runProgram(program: string, args: string[], options: SpawnOption
   const { signal, timeoutMs } = options;
   const maxBytes = options.maxBytes ?? MAX_OUTPUT_BYTES;
   const graceMs = options.graceMs ?? GRACE_MS;
+  const drainMs = options.drainMs ?? DRAIN_MS;
   return new Promise((resolve, reject) => {
     if (signal?.aborted === true) {
       reject(new RunCancelled());
@@ -184,7 +189,11 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       stopped = reason;
       endTree(child, false);
       forceTimer = setTimeout(() => {
-        endTree(child, true);
+        // A group that has ended needs no kill, and a late one could reach a
+        // process that took its number since.
+        if (groupRuns(child)) {
+          endTree(child, true);
+        }
         live.delete(child);
         release();
       }, graceMs);
@@ -217,14 +226,22 @@ export function runProgram(program: string, args: string[], options: SpawnOption
     });
 
     // A program that ended on its own may leave children in its group that
-    // still print, so their output is read until the group ends. What a
-    // process outside the group still holds is then read for a grace period
-    // and let go. A cancel or a timeout still bounds the wait.
+    // still print, so their output is read until the group ends, for up to
+    // drainMs. What a process outside the group still holds is then read for
+    // a grace period and let go. A cancel or a timeout ends the wait sooner.
+    let exitedAt = 0;
     const drainWhenGroupEnds = (): void => {
-      drainTimer = groupRuns(child) ? setTimeout(drainWhenGroupEnds, 100) : setTimeout(release, graceMs);
+      if (!groupRuns(child)) {
+        drainTimer = setTimeout(release, graceMs);
+      } else if (Date.now() - exitedAt < drainMs) {
+        drainTimer = setTimeout(drainWhenGroupEnds, 100);
+      } else {
+        release();
+      }
     };
     child.on("exit", () => {
       if (stopped === undefined) {
+        exitedAt = Date.now();
         drainWhenGroupEnds();
       }
     });

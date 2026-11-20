@@ -260,6 +260,69 @@ describe("runProgram", function () {
     }
   });
 
+  it("stops waiting for the group after a while once the program has exited", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const pidFile = path.join(folder, "lingering.pid");
+    const child = `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 6000);`;
+    const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(child)}], { stdio: "inherit" }); process.stdout.write("done"); setTimeout(() => process.exit(0), 200);`;
+    const started = Date.now();
+    try {
+      const finished = await runProgram(NODE, ["-e", wrapper], { cwd: folder, graceMs: 200, drainMs: 800 });
+      assert.equal(finished.stdout, "done");
+      assert.ok(Date.now() - started < 3000, `settled in ${String(Date.now() - started)} ms`);
+    } finally {
+      await until(
+        () => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "",
+        "the child starts",
+      );
+      try {
+        process.kill(Number(fs.readFileSync(pidFile, "utf8")), "SIGKILL");
+      } catch {
+        // It ended already.
+      }
+    }
+  });
+
+  it("sends no forced kill to a group whose last member ended after the run settled", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const kills: string[] = [];
+    const kill = process.kill.bind(process);
+    process.kill = (pid: number, signal?: string | number) => {
+      if (signal !== "SIGKILL") {
+        return kill(pid, signal);
+      }
+      try {
+        const result = kill(pid, signal);
+        kills.push("ok");
+        return result;
+      } catch (error) {
+        kills.push((error as NodeJS.ErrnoException).code ?? "error");
+        throw error;
+      }
+    };
+    try {
+      const member = `process.on("SIGTERM", () => setTimeout(() => process.exit(0), 300)); setInterval(() => {}, 1000);`;
+      const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(member)}], { stdio: "ignore" }); setInterval(() => {}, 1000);`;
+      const controller = new AbortController();
+      const running = runProgram(NODE, ["-e", wrapper], {
+        cwd: folder,
+        signal: controller.signal,
+        graceMs: 1500,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      controller.abort();
+      await assert.rejects(running, RunCancelled);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      assert.ok(!kills.includes("ESRCH"), kills.join(", "));
+    } finally {
+      process.kill = kill;
+    }
+  });
+
   it("ends a run that prints more than it may keep", async () => {
     await assert.rejects(
       runProgram(NODE, ["-e", 'process.stdout.write("x".repeat(4096)); setInterval(() => {}, 1000)'], {
