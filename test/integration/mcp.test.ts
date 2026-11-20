@@ -6,12 +6,35 @@
  */
 
 import * as assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 
 import { extension, workspaceFolder } from "./helpers";
 
 const SETTING = "allowRowValues";
+
+const run = promisify(execFile);
+
+/** Wait until a condition holds, or fail after a while. */
+async function until(condition: () => boolean, what: string): Promise<void> {
+  for (let waited = 0; waited < 10_000; waited += 100) {
+    if (condition()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.fail(`timed out waiting until ${what}`);
+}
+
+/** Whether the Veridelta on PATH takes `veridelta mcp --allow-host`. */
+async function takesAllowHostOnPath(): Promise<boolean> {
+  const { stdout } = await run("veridelta", ["mcp", "--help"]);
+  return stdout.includes("--allow-host");
+}
 
 /** Resolve when the provider announces a change, or fail after a while. */
 function nextChange(event: vscode.Event<void>): Promise<void> {
@@ -32,9 +55,9 @@ describe("Veridelta in agent mode", function () {
   this.timeout(60_000);
 
   afterEach(async () => {
-    await vscode.workspace
-      .getConfiguration("veridelta.mcp")
-      .update(SETTING, undefined, vscode.ConfigurationTarget.Workspace);
+    const configuration = vscode.workspace.getConfiguration("veridelta.mcp");
+    await configuration.update(SETTING, undefined, vscode.ConfigurationTarget.Workspace);
+    await configuration.update("allowHosts", undefined, vscode.ConfigurationTarget.Global);
   });
 
   it("offers one server rooted at the workspace folder", async () => {
@@ -67,5 +90,53 @@ describe("Veridelta in agent mode", function () {
     const [server] = api.mcpProvider.provideMcpServerDefinitions();
     assert.ok(server);
     assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath, "--allow-row-values"]);
+  });
+
+  it("passes the hosts user settings allow, and leaves them out for a Veridelta without --allow-host", async () => {
+    const api = await extension();
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await vscode.workspace
+      .getConfiguration("veridelta.mcp")
+      .update("allowHosts", ["db.internal"], vscode.ConfigurationTarget.Global);
+    await changed;
+    const [server] = api.mcpProvider.provideMcpServerDefinitions();
+    assert.ok(server);
+    assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath, "--allow-host=db.internal"]);
+    const resolved = await api.mcpProvider.resolveMcpServerDefinition(server);
+    const expected = (await takesAllowHostOnPath())
+      ? ["mcp", "--root", workspaceFolder().fsPath, "--allow-host=db.internal"]
+      : ["mcp", "--root", workspaceFolder().fsPath];
+    assert.deepEqual(resolved.args, expected);
+  });
+
+  it("ignores hosts a repository's own settings allow", async () => {
+    const api = await extension();
+    const file = path.join(workspaceFolder().fsPath, ".vscode", "settings.json");
+    const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // maxRows is a setting a workspace may set, so it shows when the file has been read.
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ "veridelta.mcp.allowHosts": ["attacker.example"], "veridelta.mcp.maxRows": 7 }),
+    );
+    try {
+      await until(
+        () => vscode.workspace.getConfiguration("veridelta.mcp").get("maxRows") === 7,
+        "the workspace settings are read",
+      );
+      const [server] = api.mcpProvider.provideMcpServerDefinitions();
+      assert.ok(server);
+      assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath, "--max-rows", "7"]);
+    } finally {
+      if (before === undefined) {
+        fs.rmSync(file);
+      } else {
+        fs.writeFileSync(file, before);
+      }
+      await until(
+        () => vscode.workspace.getConfiguration("veridelta.mcp").get("maxRows") === 50,
+        "the workspace settings are restored",
+      );
+    }
   });
 });

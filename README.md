@@ -28,7 +28,7 @@ The report is written under the extension's storage, so the workspace stays clea
 
 ## Agent mode
 
-The extension registers `veridelta mcp` as an MCP server with VS Code's agent mode, so an agent in the Chat view can validate a configuration, run a comparison, and read the rows that differ through the six tools the [AI agents](https://veridelta.github.io/veridelta/agents/) page lists. The server starts with one `--root` per workspace folder, runs in the first, and reads nothing outside them. It appears as "Veridelta" under **MCP: List Servers**. Three settings map onto its flags, and a change restarts it: `veridelta.mcp.allowRowValues`, `veridelta.mcp.allowQueries`, and `veridelta.mcp.maxRows`. Row values stay off until you turn them on, so an agent sees counts, columns, and keys only.
+The extension registers `veridelta mcp` as an MCP server with VS Code's agent mode, so an agent in the Chat view can validate a configuration, run a comparison, and read the rows that differ through the six tools the [AI agents](https://veridelta.github.io/veridelta/agents/) page lists. The server starts with one `--root` per workspace folder, runs in the first, and reads nothing outside them. It appears as "Veridelta" under **MCP: List Servers**. Four settings map onto its flags, and a change restarts it: `veridelta.mcp.allowRowValues`, `veridelta.mcp.allowQueries`, `veridelta.mcp.allowHosts`, and `veridelta.mcp.maxRows`. Row values stay off until you turn them on, so an agent sees counts, columns, and keys only. Likewise a tool reads data on this machine only, until `veridelta.mcp.allowHosts` names the database servers, buckets, or other hosts it may connect to. That setting applies from user settings alone, so a repository's settings cannot widen what the agent reaches. Veridelta 0.42.2 has no `--allow-host`, so with it the extension leaves the hosts out and says so.
 
 ## Settings
 
@@ -38,6 +38,7 @@ The extension registers `veridelta mcp` as an MCP server with VS Code's agent mo
 | `veridelta.run.htmlMaxRows` | unset | Rows per table in the HTML report, passed as `--html-max-rows`. Unset, Veridelta's default of 1000 applies. |
 | `veridelta.mcp.allowRowValues` | `false` | Let the agent's tools return values from the data, as `--allow-row-values` does. |
 | `veridelta.mcp.allowQueries` | `false` | Let a tool run a side's query as written, as `--allow-queries` does. |
+| `veridelta.mcp.allowHosts` | `[]` | Hosts the agent's tools may connect to, each passed as `--allow-host`, in lowercase with no scheme or port, such as `db.internal`. User settings only. Needs a Veridelta after 0.42.2. |
 | `veridelta.mcp.maxRows` | `50` | The most rows, or value map entries, one tool call returns, as `--max-rows` sets it. |
 
 ## Schema

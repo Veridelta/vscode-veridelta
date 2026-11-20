@@ -3,7 +3,13 @@
 
 import * as assert from "node:assert/strict";
 
-import { DEFAULT_SETTINGS, serverCommand } from "../../src/mcpArgs";
+import {
+  DEFAULT_SETTINGS,
+  hasAllowHost,
+  serverCommand,
+  takesAllowHost,
+  withoutAllowHost,
+} from "../../src/mcpArgs";
 
 describe("serverCommand", () => {
   it("passes each folder as a root and adds no flag at the defaults", () => {
@@ -39,12 +45,48 @@ describe("serverCommand", () => {
       "10",
     ]);
     assert.deepEqual(
-      serverCommand(["veridelta"], ["/a"], { allowRowValues: true, allowQueries: true, maxRows: 500 }).args,
-      ["mcp", "--root", "/a", "--allow-row-values", "--allow-queries", "--max-rows", "500"],
+      serverCommand(["veridelta"], ["/a"], {
+        allowRowValues: true,
+        allowQueries: true,
+        maxRows: 500,
+        allowHosts: ["db.internal"],
+      }).args,
+      [
+        "mcp",
+        "--root",
+        "/a",
+        "--allow-row-values",
+        "--allow-queries",
+        "--allow-host=db.internal",
+        "--max-rows",
+        "500",
+      ],
+    );
+  });
+
+  it("passes each allowed host as one word, so a host cannot read as another flag", () => {
+    assert.deepEqual(
+      serverCommand(["veridelta"], ["/a"], { ...DEFAULT_SETTINGS, allowHosts: ["db.internal", "-x"] }).args,
+      ["mcp", "--root", "/a", "--allow-host=db.internal", "--allow-host=-x"],
     );
   });
 
   it("falls back to veridelta when the command is empty", () => {
     assert.deepEqual(serverCommand([], [], DEFAULT_SETTINGS), { program: "veridelta", args: ["mcp"] });
+  });
+});
+
+describe("allowed hosts on an older Veridelta", () => {
+  it("reads whether the server's help names --allow-host", () => {
+    assert.equal(takesAllowHost("  --allow-row-values  Let ...\n  --allow-queries  Let ..."), false);
+    assert.equal(takesAllowHost("  --allow-host HOST  A host a side may connect to"), true);
+    assert.equal(takesAllowHost("  --allow-hosts LIST"), false);
+  });
+
+  it("finds and drops the hosts and nothing else", () => {
+    const args = ["run", "veridelta", "mcp", "--root", "/a", "--allow-host=db.internal", "--max-rows", "5"];
+    assert.equal(hasAllowHost(args), true);
+    assert.deepEqual(withoutAllowHost(args), ["run", "veridelta", "mcp", "--root", "/a", "--max-rows", "5"]);
+    assert.equal(hasAllowHost(withoutAllowHost(args)), false);
   });
 });

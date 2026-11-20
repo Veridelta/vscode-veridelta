@@ -7,8 +7,15 @@
 
 import * as vscode from "vscode";
 
-import { cliVersion, configuredCommand } from "./cli";
-import { DEFAULT_MAX_ROWS, serverCommand, type McpSettings } from "./mcpArgs";
+import { cliVersion, configuredCommand, runVeridelta } from "./cli";
+import {
+  DEFAULT_MAX_ROWS,
+  hasAllowHost,
+  serverCommand,
+  takesAllowHost,
+  withoutAllowHost,
+  type McpSettings,
+} from "./mcpArgs";
 import { parseVersion } from "./version";
 
 /** The id `package.json` contributes under `mcpServerDefinitionProviders`. */
@@ -16,16 +23,23 @@ export const PROVIDER_ID = "veridelta.mcp";
 
 const LABEL = "Veridelta";
 
+/** Whether this session has already said that the installed Veridelta does not take `--allow-host`. */
+let warnedAboutAllowHost = false;
+
 function readSettings(): McpSettings {
   const configuration = vscode.workspace.getConfiguration("veridelta.mcp");
   const allowRowValues: unknown = configuration.get("allowRowValues");
   const allowQueries: unknown = configuration.get("allowQueries");
   const maxRows: unknown = configuration.get("maxRows");
+  const allowHosts: unknown = configuration.get("allowHosts");
   return {
     allowRowValues: allowRowValues === true,
     allowQueries: allowQueries === true,
     maxRows:
       typeof maxRows === "number" && Number.isInteger(maxRows) && maxRows >= 1 ? maxRows : DEFAULT_MAX_ROWS,
+    allowHosts: Array.isArray(allowHosts)
+      ? allowHosts.filter((host): host is string => typeof host === "string" && host.length > 0)
+      : [],
   };
 }
 
@@ -44,6 +58,27 @@ export function currentDefinition(): vscode.McpStdioServerDefinition | undefined
   const definition = new vscode.McpStdioServerDefinition(LABEL, program, args);
   definition.cwd = first.uri;
   return definition;
+}
+
+/** Whether the installed Veridelta's `mcp` command has no `--allow-host`; false when its help does not run. */
+async function lacksAllowHost(folder: string): Promise<boolean> {
+  try {
+    const finished = await runVeridelta(["mcp", "--help"], folder);
+    return finished.code === 0 && !takesAllowHost(finished.stdout);
+  } catch {
+    return false;
+  }
+}
+
+/** Say once that the hosts setting does not apply to the installed Veridelta. */
+function warnAboutAllowHost(installed: string): void {
+  if (warnedAboutAllowHost) {
+    return;
+  }
+  warnedAboutAllowHost = true;
+  void vscode.window.showWarningMessage(
+    `${installed} has no --allow-host, so veridelta.mcp.allowHosts does not apply, and the agent's tools connect to any host a configuration names. A later Veridelta holds them to the hosts the setting lists.`,
+  );
 }
 
 /** What agent mode asks for its servers: one Veridelta server, restarted when the folders or the settings change. */
@@ -74,17 +109,29 @@ export class VerideltaMcpProvider
     return definition === undefined ? [] : [definition];
   }
 
-  /** Fill in the installed Veridelta's version, which agent mode shows beside the server. */
+  /**
+   * Fill in the installed Veridelta's version, which agent mode shows beside the server.
+   *
+   * A Veridelta that does not take `--allow-host` would refuse to start with it,
+   * so the flags are left out for one, and a notification says so once.
+   */
   async resolveMcpServerDefinition(
     server: vscode.McpStdioServerDefinition,
   ): Promise<vscode.McpStdioServerDefinition> {
     const folder = server.cwd?.fsPath;
-    if (folder !== undefined) {
-      const text = await cliVersion(folder);
-      const version = text === undefined ? undefined : parseVersion(text);
-      if (version !== undefined) {
-        server.version = version.join(".");
-      }
+    if (folder === undefined) {
+      return server;
+    }
+    const text = await cliVersion(folder);
+    const version = text === undefined ? undefined : parseVersion(text);
+    if (version !== undefined) {
+      server.version = version.join(".");
+    }
+    if (hasAllowHost(server.args) && (await lacksAllowHost(folder))) {
+      server.args = withoutAllowHost(server.args);
+      warnAboutAllowHost(
+        version === undefined ? "The installed Veridelta" : `Veridelta ${version.join(".")}`,
+      );
     }
     return server;
   }

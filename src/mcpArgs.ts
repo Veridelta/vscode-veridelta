@@ -12,6 +12,8 @@ export interface McpSettings {
   allowRowValues: boolean;
   allowQueries: boolean;
   maxRows: number;
+  /** Hosts a side may connect to, each passed as `--allow-host`. */
+  allowHosts: string[];
 }
 
 /** The server's own default for `--max-rows`, which the flag is left out for. */
@@ -22,7 +24,13 @@ export const DEFAULT_SETTINGS: McpSettings = {
   allowRowValues: false,
   allowQueries: false,
   maxRows: DEFAULT_MAX_ROWS,
+  allowHosts: [],
 };
+
+/** The flag that names a host the server may connect to, which Veridelta after 0.42.2 takes. */
+export const ALLOW_HOST = "--allow-host";
+
+const ALLOW_HOST_PREFIX = `${ALLOW_HOST}=`;
 
 /** A program and its arguments. */
 export interface ServerCommand {
@@ -49,8 +57,27 @@ export function serverCommand(command: string[], folders: string[], settings: Mc
   if (settings.allowQueries) {
     args.push("--allow-queries");
   }
+  for (const host of settings.allowHosts) {
+    // One word with `=`, so a host that starts with a dash stays the flag's value.
+    args.push(`${ALLOW_HOST_PREFIX}${host}`);
+  }
   if (settings.maxRows !== DEFAULT_MAX_ROWS) {
     args.push("--max-rows", String(settings.maxRows));
   }
   return { program, args };
+}
+
+/** Whether `veridelta mcp --help` names `--allow-host`, which a Veridelta before it does not take. */
+export function takesAllowHost(help: string): boolean {
+  return /--allow-host(?![\w-])/.test(help);
+}
+
+/** Whether the arguments name a host the server may connect to. */
+export function hasAllowHost(args: readonly string[]): boolean {
+  return args.some((arg) => arg.startsWith(ALLOW_HOST_PREFIX));
+}
+
+/** The arguments without any `--allow-host`, for a Veridelta that does not take it. */
+export function withoutAllowHost(args: readonly string[]): string[] {
+  return args.filter((arg) => !arg.startsWith(ALLOW_HOST_PREFIX));
 }
