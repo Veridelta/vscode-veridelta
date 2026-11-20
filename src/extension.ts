@@ -15,6 +15,7 @@ import { pickConfiguration } from "./configPicker";
 import { registerMcpProvider, type VerideltaMcpProvider } from "./mcp";
 import { recentNotifications, showInformation, type Surfaces } from "./notify";
 import { openArtifacts, openReportOf, runComparison, type RunOutcome } from "./run";
+import { endAll } from "./spawn";
 import { validateDocument } from "./validate";
 
 /** What `activate` hands back, for tests. */
@@ -35,7 +36,8 @@ export function activate(context: vscode.ExtensionContext): Api {
     diagnostics: vscode.languages.createDiagnosticCollection("veridelta"),
     output: vscode.window.createOutputChannel("Veridelta"),
   };
-  context.subscriptions.push(surfaces.diagnostics, surfaces.output);
+  // A run or a validate still going when the extension stops ends with it.
+  context.subscriptions.push(surfaces.diagnostics, surfaces.output, { dispose: endAll });
   const mcpProvider = registerMcpProvider(context);
 
   context.subscriptions.push(

@@ -9,42 +9,20 @@
  * can differ from a shell's, which is what the setting is for.
  */
 
-import { execFile } from "node:child_process";
-
 import * as vscode from "vscode";
 
-/** What one run of the command gave back. */
-export interface Finished {
-  stdout: string;
-  stderr: string;
-  /** The exit code, or null when a signal ended the process. */
-  code: number | null;
-}
+import { runProgram, type Finished } from "./spawn";
 
-/** The command was not found: the first word of the setting is not on PATH. */
-export class CommandNotFound extends Error {
-  constructor(readonly command: string) {
-    super(`Veridelta was not found: '${command}' is not on the extension host's PATH.`);
-    this.name = "CommandNotFound";
-  }
-}
+export { CommandNotFound, FolderNotFound, RunCancelled, RunTimedOut, type Finished } from "./spawn";
 
-/** The run was cancelled: its process was ended before it finished. */
-export class RunCancelled extends Error {
-  constructor() {
-    super("The Veridelta run was cancelled.");
-    this.name = "RunCancelled";
-  }
-}
-
-/** How to run the command: which words, and a signal that ends the process early. */
+/** How to run the command: which words, a signal that ends it early, and how long it may take. */
 export interface RunOptions {
   command?: string[];
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 const DEFAULT_COMMAND = "veridelta";
-const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 /** Read the `veridelta.command` setting, falling back to `["veridelta"]` when it is empty. */
 export function configuredCommand(): string[] {
@@ -60,39 +38,16 @@ export function configuredCommand(): string[] {
  *
  * A non-zero exit code is a result, not an error: `validate` exits 1 on an
  * error finding and 3 when it cannot finish, and each prints JSON to read.
- * Aborting the signal ends the process, and the promise rejects with
- * `RunCancelled`.
+ * Aborting the signal, or running past `timeoutMs`, ends the process and
+ * everything it started, and the promise rejects with `RunCancelled` or
+ * `RunTimedOut`.
  */
 export function runVeridelta(args: string[], cwd: string, options: RunOptions = {}): Promise<Finished> {
   const [program = DEFAULT_COMMAND, ...leading] = options.command ?? configuredCommand();
-  const { signal } = options;
-  return new Promise((resolve, reject) => {
-    execFile(
-      program,
-      [...leading, ...args],
-      {
-        cwd,
-        encoding: "utf8",
-        maxBuffer: MAX_OUTPUT_BYTES,
-        windowsHide: true,
-        ...(signal === undefined ? {} : { signal }),
-      },
-      (error, stdout, stderr) => {
-        if (error === null) {
-          resolve({ stdout, stderr, code: 0 });
-        } else if (typeof error.code === "number") {
-          resolve({ stdout, stderr, code: error.code });
-        } else if (error.code === "ENOENT") {
-          reject(new CommandNotFound(program));
-        } else if (error.code === "ABORT_ERR" || signal?.aborted === true) {
-          reject(new RunCancelled());
-        } else if (error.code === undefined || error.code === null) {
-          resolve({ stdout, stderr, code: null });
-        } else {
-          reject(error instanceof Error ? error : new Error(error.message));
-        }
-      },
-    );
+  return runProgram(program, [...leading, ...args], {
+    cwd,
+    signal: options.signal,
+    timeoutMs: options.timeoutMs,
   });
 }
 
