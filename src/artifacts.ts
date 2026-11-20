@@ -193,8 +193,9 @@ interface Lookup {
  * `<<` beats an earlier one, and the last duplicate wins. Each mapping is
  * looked at once per key, so repeated aliases cost no more than the text.
  * A mapping that merges a mapping holding it is a loop: Veridelta main
- * refuses such a file, and PyYAML's answer for it depends on the order it
- * flattens in place, so the lookup notes the loop rather than guess.
+ * refuses such a file, and when the value comes through the loop, PyYAML's
+ * answer depends on the order it flattens in place, so the lookup notes the
+ * loop rather than guess. An own pair, which beats every merge, is read as is.
  */
 function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): unknown {
   if (seen.done.has(map)) {
@@ -203,6 +204,16 @@ function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): un
   if (seen.open.has(map)) {
     seen.looped = true;
     return MISSING;
+  }
+  // Own pairs come after every merge, so the last own pair wins and the
+  // merges, loops included, do not matter.
+  const own = map.items.filter(
+    (pair) => !isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key,
+  );
+  const last = own.at(-1);
+  if (last !== undefined) {
+    seen.done.set(map, last.value);
+    return last.value;
   }
   seen.open.add(map);
   let found: unknown = MISSING;
@@ -214,11 +225,6 @@ function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): un
           found = value;
         }
       }
-    }
-  }
-  for (const pair of map.items) {
-    if (!isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key) {
-      found = pair.value;
     }
   }
   seen.open.delete(map);
@@ -233,10 +239,14 @@ class MergeLoop extends Error {}
 function setting(document: Document, map: YAMLMap, key: string): unknown {
   const seen: Lookup = { done: new Map(), open: new Set(), looped: false };
   const node = lookup(document, map, key, seen);
+  if (node === MISSING) {
+    // Every mapping the merges reach was looked at, so none sets the key.
+    return undefined;
+  }
   if (seen.looped) {
     throw new MergeLoop();
   }
-  return node === MISSING ? undefined : scalarValue(resolved(document, node));
+  return scalarValue(resolved(document, node));
 }
 
 /** A scalar's value, or undefined for a mapping, a list, or nothing. */

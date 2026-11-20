@@ -132,10 +132,20 @@ describe("planArtifacts", () => {
     const loop =
       "--- &r\n<<: &a3 {<<: [{output_path: p4}, *r]}\n<<: {<<: {<<: {output_path: p5}}, <<: *a3}\n";
     assert.deepEqual(planArtifacts(`${loop}${BASE}`, FOLDER), { plan: undefined, readable: false });
-    assert.deepEqual(planArtifacts(`a: &a\n  <<: *a\n  output_path: one\n<<: *a\n${BASE}`, FOLDER), {
-      plan: undefined,
-      readable: false,
-    });
+  });
+
+  it("reads a setting a loop cannot change, as PyYAML does", () => {
+    // A mapping's own pair beats its merges, so a loop among the merges does not matter.
+    assert.equal(
+      planArtifacts(`--- &r\n<<: *r\noutput_path: own\n${BASE}`, FOLDER).plan?.folder,
+      path.resolve(FOLDER, "own"),
+    );
+    assert.equal(
+      planArtifacts(`a: &a\n  <<: *a\n  output_path: one\n<<: *a\n${BASE}`, FOLDER).plan?.folder,
+      path.resolve(FOLDER, "one"),
+    );
+    // No mapping a loop reaches sets it, so the configuration sets none.
+    assert.deepEqual(planArtifacts(`--- &r\n<<: *r\n${BASE}`, FOLDER), { plan: undefined, readable: true });
   });
 
   it("reads a file whose anchors expand past any reasonable size, without expanding them", () => {
