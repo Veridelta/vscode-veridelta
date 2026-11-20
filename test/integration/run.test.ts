@@ -43,6 +43,22 @@ describe("Veridelta: Run comparison", function () {
     }
   });
 
+  it("opens no empty tab for a report it will not show", async () => {
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("veridelta.yaml"));
+    assert.ok(outcome);
+    const reportTabs = (): number =>
+      vscode.window.tabGroups.all
+        .flatMap((group) => group.tabs)
+        .filter((tab) => tab.label.startsWith("Veridelta report")).length;
+    const before = reportTabs();
+    fs.writeFileSync(outcome.reportFile, "<!DOCTYPE html><style></style><style></style>");
+    await assert.rejects(api.openReport(outcome), /not the document Veridelta writes/);
+    fs.rmSync(outcome.reportFile);
+    await assert.rejects(api.openReport(outcome), /no longer there/);
+    assert.equal(reportTabs(), before);
+  });
+
   it("opens the discrepancy files a configuration asks for", async () => {
     fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
     const api = await extension();

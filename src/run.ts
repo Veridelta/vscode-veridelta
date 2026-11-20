@@ -24,7 +24,7 @@ import {
   withProgress,
   type Surfaces,
 } from "./notify";
-import { openReport } from "./reportView";
+import { openReport, ReportMissing } from "./reportView";
 import { parseRunOutput, verdictLine, type RunSummary } from "./summary";
 
 /** What a run gave: its summary, the report it wrote, and where its discrepancy files went. */
@@ -176,11 +176,31 @@ async function offerOutcome(outcome: RunOutcome, surfaces: Surfaces): Promise<vo
     ? await showInformation(line, OPEN_REPORT, OPEN_FILES, SHOW_OUTPUT)
     : await showWarning(line, OPEN_REPORT, OPEN_FILES, SHOW_OUTPUT);
   if (choice === OPEN_REPORT) {
-    await openReportOf(outcome);
+    try {
+      await openReportOf(outcome);
+    } catch (error) {
+      void explainReport(outcome, error);
+    }
   } else if (choice === OPEN_FILES) {
     await openArtifacts(outcome);
   } else if (choice === SHOW_OUTPUT) {
     surfaces.output.show(true);
+  }
+}
+
+/** Say why the report did not open, and offer the file when it is there but was refused. */
+async function explainReport(outcome: RunOutcome, error: unknown): Promise<void> {
+  if (error instanceof ReportMissing) {
+    void showError(`Veridelta could not show the report: ${error.message}`);
+    return;
+  }
+  const reveal = "Reveal the report file";
+  const choice = await showError(
+    `Veridelta could not show the report: ${messageOf(error)} It opens only behind its policy, so the file is left as it is.`,
+    reveal,
+  );
+  if (choice === reveal) {
+    await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(outcome.reportFile));
   }
 }
 
