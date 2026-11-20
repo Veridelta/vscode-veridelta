@@ -7,6 +7,7 @@
 
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
@@ -91,6 +92,46 @@ describe("Veridelta: Run comparison", function () {
       opened.map((file) => path.basename(file)),
       ["removed_rows.csv", "changed_rows.csv"],
     );
+  });
+
+  it("opens the files it can, and names a folder at a file's name", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
+    const added = path.join(outcome.artifacts.folder, "added_rows.csv");
+    fs.rmSync(added);
+    fs.mkdirSync(added);
+    const opened = await api.openArtifacts(outcome);
+    assert.deepEqual(
+      opened.map((file) => path.basename(file)),
+      ["removed_rows.csv", "changed_rows.csv"],
+    );
+    assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv is not a file/);
+  });
+
+  it("does not follow a link at a file's name out of the workspace", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "veridelta-outside-"));
+    try {
+      const target = path.join(outside, "elsewhere.csv");
+      fs.writeFileSync(target, "id\n1\n");
+      const added = path.join(outcome.artifacts.folder, "added_rows.csv");
+      fs.rmSync(added);
+      fs.symlinkSync(target, added);
+      const opened = await api.openArtifacts(outcome);
+      assert.deepEqual(
+        opened.map((file) => path.basename(file)),
+        ["removed_rows.csv", "changed_rows.csv"],
+      );
+      assert.ok(!vscode.workspace.textDocuments.some((document) => document.uri.fsPath === target));
+      assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv links outside the workspace/);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("gives nothing for a configuration that does not load", async () => {

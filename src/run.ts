@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { statSync } from "node:fs";
+import { lstatSync, realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
 
@@ -75,6 +75,38 @@ export function openReportOf(outcome: RunOutcome): Promise<vscode.WebviewPanel> 
   return openReport(outcome.reportFile, `Veridelta report: ${path.basename(outcome.configFile)}`);
 }
 
+/** Whether a path lies inside a folder, or is the folder. */
+function isInside(file: string, folder: string): boolean {
+  const relative = path.relative(folder, file);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * Why a file at a candidate's name is not opened, or undefined when it opens.
+ *
+ * A link opens only when it leads to a regular file inside a workspace folder,
+ * since Veridelta 0.42.2 writes through a link at a file's name.
+ */
+function reasonToSkip(file: string): string | undefined {
+  const name = path.basename(file);
+  try {
+    const entry = lstatSync(file);
+    if (entry.isSymbolicLink()) {
+      const target = realpathSync(file);
+      const folders = (vscode.workspace.workspaceFolders ?? []).filter(
+        (folder) => folder.uri.scheme === "file",
+      );
+      if (!folders.some((folder) => isInside(target, realpathSync(folder.uri.fsPath)))) {
+        return `${name} links outside the workspace`;
+      }
+      return statSync(target).isFile() ? undefined : `${name} is not a file`;
+    }
+    return entry.isFile() ? undefined : `${name} is not a file`;
+  } catch {
+    return `${name} cannot be read`;
+  }
+}
+
 /**
  * Open the discrepancy files a run wrote, and return them.
  *
@@ -103,10 +135,31 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
     return [];
   }
   if (plan.textual) {
+    const opened: string[] = [];
+    const skipped: string[] = [];
     for (const file of files) {
-      await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: false, preserveFocus: true });
+      const reason = reasonToSkip(file);
+      if (reason !== undefined) {
+        skipped.push(reason);
+        continue;
+      }
+      try {
+        // vscode.open asks before opening a large file, where showTextDocument fails.
+        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file), {
+          preview: false,
+          preserveFocus: true,
+        });
+        opened.push(file);
+      } catch {
+        skipped.push(`${path.basename(file)} did not open`);
+      }
     }
-    return files;
+    if (skipped.length > 0) {
+      void showWarning(
+        `Veridelta did not open every discrepancy file in ${plan.folder}: ${skipped.join("; ")}.`,
+      );
+    }
+    return opened;
   }
   await vscode.commands.executeCommand("revealInExplorer", vscode.Uri.file(files[0] ?? plan.folder));
   const noun = files.length === 1 ? "file" : "files";
@@ -218,6 +271,8 @@ export async function runComparison(
     artifacts: artifactPlan(configText, folder),
     startedAt,
   };
-  void offerOutcome(outcome, surfaces);
+  offerOutcome(outcome, surfaces).catch((error: unknown) => {
+    void showFailure(`Veridelta could not finish that: ${messageOf(error)}`, surfaces);
+  });
   return outcome;
 }
