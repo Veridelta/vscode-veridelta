@@ -227,6 +227,22 @@ describe("Veridelta in agent mode", function () {
     }
   });
 
+  it("starts the server with the command a trusted workspace names, as the README says", async () => {
+    const api = await extension();
+    const root = vscode.workspace.getConfiguration("veridelta");
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await root.update("command", ["uv", "run", "veridelta"], vscode.ConfigurationTarget.Workspace);
+    try {
+      await changed;
+      const [server] = api.mcpProvider.provideMcpServerDefinitions();
+      assert.ok(server);
+      assert.equal(server.command, "uv");
+      assert.deepEqual(server.args.slice(0, 3), ["run", "veridelta", "mcp"]);
+    } finally {
+      await root.update("command", undefined, vscode.ConfigurationTarget.Workspace);
+    }
+  });
+
   it("ignores what a repository's own settings grant the agent", async () => {
     const api = await extension();
     const file = path.join(workspaceFolder().fsPath, ".vscode", "settings.json");

@@ -4,9 +4,10 @@
 /**
  * Which stored reports to remove: each run writes its own, and old ones go.
  *
- * A report holds rows from the data, so the extension keeps only the newest
- * few for each configuration and none past a week. This module imports
- * nothing from VS Code, so its tests run under plain Mocha.
+ * A report holds rows from the data, so before each run the extension
+ * removes the configuration's reports past the newest few, and any report in
+ * the workspace's storage older than a week. This module imports nothing
+ * from VS Code, so its tests run under plain Mocha.
  */
 
 /** How many reports to keep for one configuration. */
