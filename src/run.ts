@@ -339,7 +339,7 @@ export async function runComparison(
   logStderr(surfaces.output, finished.stderr);
   const parsed = parseRunOutput(finished.stdout, finished.code);
   if (parsed.kind === "unparsable") {
-    logUnreadable(surfaces.output, finished.stdout, finished.stderr);
+    logUnreadable(surfaces.output, finished.stdout);
     const detail = finished.stderr.trim() || finished.stdout.trim() || `exit code ${String(finished.code)}`;
     void showFailure(`Veridelta gave no summary to read: ${detail}`, surfaces);
     return undefined;

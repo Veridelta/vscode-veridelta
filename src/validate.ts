@@ -151,7 +151,7 @@ export async function validateDocument(
   logStderr(surfaces.output, finished.stderr);
   const parsed = parseOutput(finished.stdout, finished.code);
   if (parsed.kind === "unparsable") {
-    logUnreadable(surfaces.output, finished.stdout, finished.stderr);
+    logUnreadable(surfaces.output, finished.stdout);
     const detail = finished.stderr.trim() || finished.stdout.trim() || `exit code ${String(finished.code)}`;
     void explainUnreadable(detail, folder);
     surfaces.diagnostics.delete(document.uri);

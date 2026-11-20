@@ -91,7 +91,10 @@ describe("Veridelta: Validate configuration", function () {
   it("sends output it cannot read to the Veridelta output", async () => {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "veridelta-garbled-"));
     const script = path.join(scratch, "garbled.js");
-    fs.writeFileSync(script, 'process.stdout.write("not json [Open](command:x)\\n");');
+    fs.writeFileSync(
+      script,
+      'process.stderr.write("a warning\\n"); process.stdout.write("not json [Open](command:x)\\n");',
+    );
     const configuration = vscode.workspace.getConfiguration("veridelta");
     await configuration.update("command", ["node", script], vscode.ConfigurationTarget.Workspace);
     const lines: string[] = [];
@@ -100,6 +103,7 @@ describe("Veridelta: Validate configuration", function () {
     try {
       const document = await openFixture("veridelta.yaml");
       assert.deepEqual(await validateDocument(document, { diagnostics, output }), []);
+      assert.ok(lines.includes("a warning"), lines.join("\n"));
       assert.ok(lines.includes("not json [Open](command:x)"), lines.join("\n"));
     } finally {
       diagnostics.dispose();
