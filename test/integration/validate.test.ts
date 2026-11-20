@@ -7,10 +7,14 @@
 
 import * as assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 
+import { validateDocument } from "../../src/validate";
 import { extension, openFixture } from "./helpers";
 
 const run = promisify(execFile);
@@ -82,6 +86,26 @@ describe("Veridelta: Validate configuration", function () {
     assert.deepEqual(await older, [], "the older validate gives way");
     assert.equal((await newer).length, 1);
     assert.equal(vscode.languages.getDiagnostics(document.uri).length, 1);
+  });
+
+  it("sends output it cannot read to the Veridelta output", async () => {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "veridelta-garbled-"));
+    const script = path.join(scratch, "garbled.js");
+    fs.writeFileSync(script, 'process.stdout.write("not json [Open](command:x)\\n");');
+    const configuration = vscode.workspace.getConfiguration("veridelta");
+    await configuration.update("command", ["node", script], vscode.ConfigurationTarget.Workspace);
+    const lines: string[] = [];
+    const output = { appendLine: (line: string) => lines.push(line) } as unknown as vscode.OutputChannel;
+    const diagnostics = vscode.languages.createDiagnosticCollection("veridelta-test");
+    try {
+      const document = await openFixture("veridelta.yaml");
+      assert.deepEqual(await validateDocument(document, { diagnostics, output }), []);
+      assert.ok(lines.includes("not json [Open](command:x)"), lines.join("\n"));
+    } finally {
+      diagnostics.dispose();
+      await configuration.update("command", undefined, vscode.ConfigurationTarget.Workspace);
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it("runs from the Command Palette on the active editor", async () => {

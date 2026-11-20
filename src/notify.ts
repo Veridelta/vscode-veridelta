@@ -79,6 +79,18 @@ export async function offerSettings(message: string): Promise<void> {
   }
 }
 
+/**
+ * Append what the command printed to stdout when it cannot be read and stderr is empty.
+ *
+ * A notification shows that text with its links broken, so the output
+ * channel keeps it as it was printed.
+ */
+export function logUnreadable(output: vscode.OutputChannel, stdout: string, stderr: string): void {
+  if (stderr.trim() === "") {
+    logStderr(output, stdout);
+  }
+}
+
 /** Append every line the command wrote to stderr to the output channel. */
 export function logStderr(output: vscode.OutputChannel, stderr: string): void {
   for (const line of stderr.split(/\r?\n/)) {

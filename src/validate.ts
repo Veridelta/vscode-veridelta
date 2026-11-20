@@ -13,6 +13,7 @@ import { cliVersion, CommandNotFound, RunCancelled, RunTimedOut, runVeridelta, t
 import { locator, type Range } from "./locate";
 import {
   logStderr,
+  logUnreadable,
   messageOf,
   offerSettings,
   showError,
@@ -150,6 +151,7 @@ export async function validateDocument(
   logStderr(surfaces.output, finished.stderr);
   const parsed = parseOutput(finished.stdout, finished.code);
   if (parsed.kind === "unparsable") {
+    logUnreadable(surfaces.output, finished.stdout, finished.stderr);
     const detail = finished.stderr.trim() || finished.stdout.trim() || `exit code ${String(finished.code)}`;
     void explainUnreadable(detail, folder);
     surfaces.diagnostics.delete(document.uri);
