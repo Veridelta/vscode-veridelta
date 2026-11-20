@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * What the manifest promises about trust: settings a repository cannot set, and workspaces the extension stays off in.
+ * What the manifest promises about trust: settings a workspace's settings cannot set, and workspaces the extension stays off in.
  */
 
 import * as assert from "node:assert/strict";
