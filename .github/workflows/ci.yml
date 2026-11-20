@@ -84,8 +84,14 @@ jobs:
       - name: Check the Conventional Commits form
         env:
           TITLE: ${{ github.event.pull_request.title }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9., -]+\))?!?: [a-z0-9]'
+          # Dependabot capitalises the first word when the history it reads does,
+          # as "chore(deps): Bump ...", so its titles may start with a capital.
+          if [ "$AUTHOR" = "dependabot[bot]" ]; then
+            pattern="${pattern%\[a-z0-9\]}[A-Za-z0-9]"
+          fi
           if printf '%s' "$TITLE" | grep -Eq "$pattern"; then
             echo "The title follows Conventional Commits."
           else

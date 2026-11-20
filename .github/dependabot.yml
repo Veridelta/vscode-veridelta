@@ -15,7 +15,8 @@ updates:
       default-days: 7
     # Every version is pinned exactly, and an update keeps it exact.
     versioning-strategy: increase
-    # The title reads "chore(deps): ..." or "chore(deps-dev): ...".
+    # The title reads "chore(deps): ..." or "chore(deps-dev): ...", its first
+    # word sometimes capitalised, which ci.yml allows for Dependabot.
     commit-message:
       prefix: chore
       include: scope
@@ -36,7 +37,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-    # The title reads "ci(deps): ...".
+    # The title reads "ci(deps): ...", its first word sometimes capitalised.
     commit-message:
       prefix: ci
       include: scope
