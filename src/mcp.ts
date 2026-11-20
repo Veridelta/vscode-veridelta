@@ -142,7 +142,7 @@ function warnAboutOlder(installed: string, support: HostSupport, hostsSet: boole
   warnedAboutOlder = true;
   if (support === "unknown") {
     void showWarning(
-      "The extension could not tell whether the installed Veridelta takes --allow-host, so the agent's server starts without the hosts veridelta.mcp.allowHosts lists.",
+      "The extension could not tell whether the installed Veridelta takes --allow-host, so the agent's server starts without the hosts veridelta.mcp.allowHosts lists. The next start of the server asks again.",
     );
     return;
   }
@@ -175,15 +175,26 @@ export class VerideltaMcpProvider
     ];
   }
 
-  /** What each `veridelta.command` this session probed answered about `--allow-host`. */
+  /**
+   * What each command answered about `--allow-host`, by the folder it ran in.
+   *
+   * Only a definite answer is kept, for the session: a probe that failed or
+   * timed out runs again at the next offer or start. The folder is part of
+   * the key, since `uv run` picks the Veridelta of the project it finds there.
+   */
   private readonly support = new Map<string, HostSupport>();
 
-  /** The probes still running, one per command. */
+  /** The probes still running, one per command and folder. */
   private readonly probing = new Map<string, Promise<HostSupport>>();
 
-  /** The answer for the configured command, probing once per session in `folder`. */
+  /** The key an answer is kept under. */
+  private static keyOf(folder: string): string {
+    return JSON.stringify([folder, ...configuredCommand()]);
+  }
+
+  /** The answer for the configured command in `folder`, probing until a probe can tell. */
   private supportFor(folder: string): Promise<HostSupport> {
-    const key = JSON.stringify(configuredCommand());
+    const key = VerideltaMcpProvider.keyOf(folder);
     const known = this.support.get(key);
     if (known !== undefined) {
       return Promise.resolve(known);
@@ -191,7 +202,9 @@ export class VerideltaMcpProvider
     let running = this.probing.get(key);
     if (running === undefined) {
       running = probeHostSupport(folder).then((answer) => {
-        this.support.set(key, answer);
+        if (answer !== "unknown") {
+          this.support.set(key, answer);
+        }
         this.probing.delete(key);
         if (answer === "takes" && wantsHosts()) {
           // The definition offered so far left the hosts out; offer them now.
@@ -219,7 +232,7 @@ export class VerideltaMcpProvider
     if (probe === undefined || folder === undefined) {
       return [];
     }
-    const known = this.support.get(JSON.stringify(configuredCommand()));
+    const known = this.support.get(VerideltaMcpProvider.keyOf(folder));
     if (known === undefined && wantsHosts()) {
       void this.supportFor(folder);
     }
@@ -232,10 +245,12 @@ export class VerideltaMcpProvider
    *
    * VS Code passes the definition it kept from the last provide, which can be
    * older than a settings change made since. That object is left as it is,
-   * and a new one is returned, so a revoked flag never starts and a dropped
-   * flag is not dropped for good. Each probe gives up after a while, and the
-   * server then starts without its answer: with no version, and without the
-   * hosts. A notification says once what an older Veridelta does not hold.
+   * and a new one is returned, so a revoked flag never starts. Each probe
+   * gives up after a while, and the server then starts without its answer:
+   * with no version, and without the hosts, and the next start probes again.
+   * A definite answer about `--allow-host` is kept for the session, so after
+   * an upgrade of Veridelta the window needs a reload. A notification says
+   * once what an older Veridelta does not hold.
    */
   async resolveMcpServerDefinition(
     kept: vscode.McpStdioServerDefinition,

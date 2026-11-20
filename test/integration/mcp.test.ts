@@ -8,6 +8,7 @@
 import * as assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
@@ -148,6 +149,46 @@ describe("Veridelta in agent mode", function () {
         api.notifications().some((message) => message.includes("has no --allow-host")),
         "a notification says what the installed Veridelta does not hold",
       );
+    }
+  });
+
+  it("probes again at the next start when a probe could not tell", async () => {
+    const api = await extension();
+    // A command that fails its first `mcp --help`, as a first `uv run` that times out would,
+    // and runs the real Veridelta after that. It logs each call.
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "veridelta-probe-"));
+    const calls = path.join(scratch, "calls.log");
+    const script = path.join(scratch, "flaky.js");
+    fs.writeFileSync(
+      script,
+      [
+        'const fs = require("fs");',
+        `const calls = ${JSON.stringify(calls)};`,
+        "const args = process.argv.slice(2);",
+        'fs.appendFileSync(calls, args.join(" ") + "\\n");',
+        'const helps = fs.readFileSync(calls, "utf8").split("\\n").filter((line) => line.endsWith("--help")).length;',
+        'if (args.includes("--help") && helps === 1) { process.exit(1); }',
+        'const run = require("child_process").spawnSync("veridelta", args, { stdio: "inherit", shell: process.platform === "win32" });',
+        "process.exit(run.status ?? 1);",
+      ].join("\n"),
+    );
+    const root = vscode.workspace.getConfiguration("veridelta");
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await root.update("command", ["node", script], vscode.ConfigurationTarget.Global);
+    await changed;
+    try {
+      const [server] = api.mcpProvider.provideMcpServerDefinitions();
+      assert.ok(server);
+      assert.ok(await api.mcpProvider.resolveMcpServerDefinition(server));
+      assert.ok(await api.mcpProvider.resolveMcpServerDefinition(server));
+      const helps = fs
+        .readFileSync(calls, "utf8")
+        .split("\n")
+        .filter((line) => line.endsWith("--help"));
+      assert.equal(helps.length, 2, "the failed probe is not kept as an answer");
+    } finally {
+      await root.update("command", undefined, vscode.ConfigurationTarget.Global);
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
   });
 
