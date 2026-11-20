@@ -225,13 +225,24 @@ describe("writtenNow", () => {
     "/ws/out/changed_rows.csv": { mtimeMs: 10, size: 4 },
   };
 
+  it("tells a file that cannot be read from one that is gone", () => {
+    const notes = writtenNow(written, (file) =>
+      file.endsWith("added_rows.csv") ? "unreadable" : "gone",
+    ).notes;
+    assert.deepEqual(notes, [
+      "added_rows.csv cannot be read",
+      "removed_rows.csv is gone",
+      "changed_rows.csv is gone",
+    ]);
+  });
+
   it("keeps the files as the run left them and says what happened to the others, without guessing why", () => {
     const now: Record<string, { mtimeMs: number; size: number }> = {
       "/ws/out/added_rows.csv": { mtimeMs: 10, size: 4 },
       "/ws/out/changed_rows.csv": { mtimeMs: 12, size: 9 },
     };
     assert.deepEqual(
-      writtenNow(written, (file) => now[file]),
+      writtenNow(written, (file) => now[file] ?? "gone"),
       {
         current: ["/ws/out/added_rows.csv"],
         notes: ["removed_rows.csv is gone", "changed_rows.csv changed after this run wrote it"],

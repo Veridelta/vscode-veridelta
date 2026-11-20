@@ -20,6 +20,7 @@ import {
   writtenSince,
   type ArtifactPlan,
   type FileStamp,
+  type StampNow,
 } from "./artifacts";
 import { CommandNotFound, RunCancelled, runVeridelta, type Finished } from "./cli";
 import {
@@ -53,12 +54,13 @@ export interface RunOutcome {
 }
 
 /** When a file was written and its size, or undefined when it is not there. */
-function stampOf(file: string): FileStamp | undefined {
+function stampOf(file: string): StampNow {
   try {
     const { mtimeMs, size } = statSync(file);
     return { mtimeMs, size };
-  } catch {
-    return undefined;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "ENOENT" || code === "ENOTDIR" ? "gone" : "unreadable";
   }
 }
 
@@ -80,7 +82,7 @@ function writtenBy(
   for (const name of candidatesFor(plan, counts)) {
     const file = path.join(plan.folder, name);
     const stamp = stampOf(file);
-    if (stamp !== undefined && writtenSince(stamp, startedAt)) {
+    if (typeof stamp === "object" && writtenSince(stamp, startedAt)) {
       written[file] = stamp;
     }
   }

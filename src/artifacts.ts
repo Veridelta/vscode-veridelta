@@ -91,9 +91,12 @@ export function writtenSince(stamp: FileStamp, startedAt: number): boolean {
   return stamp.mtimeMs >= startedAt - CLOCK_SLACK_MS;
 }
 
+/** A file's stamp now, or why there is none: it is not there, or it cannot be checked. */
+export type StampNow = FileStamp | "gone" | "unreadable";
+
 /** Whether a file is still as the run left it; false when it is gone or another run rewrote it. */
-export function unchanged(then: FileStamp, now: FileStamp | undefined): boolean {
-  return now?.mtimeMs === then.mtimeMs && now.size === then.size;
+export function unchanged(then: FileStamp, now: StampNow | undefined): boolean {
+  return typeof now === "object" && now.mtimeMs === then.mtimeMs && now.size === then.size;
 }
 
 /** The files a run wrote that are still as it left them, and a note for each one that is not. */
@@ -108,11 +111,11 @@ export interface WrittenNow {
  * A later run of the configuration rewrites them, and a person can delete or
  * edit them, so a note says only what happened to each, not why.
  *
- * @param stampNow A file's stamp now, or undefined when it is gone.
+ * @param stampNow A file's stamp now, or why there is none.
  */
 export function writtenNow(
   written: Record<string, FileStamp>,
-  stampNow: (file: string) => FileStamp | undefined,
+  stampNow: (file: string) => StampNow,
   paths: path.PlatformPath = path,
 ): WrittenNow {
   const current: string[] = [];
@@ -122,9 +125,13 @@ export function writtenNow(
     if (unchanged(stamp, now)) {
       current.push(file);
     } else {
-      notes.push(
-        `${paths.basename(file)} ${now === undefined ? "is gone" : "changed after this run wrote it"}`,
-      );
+      const what =
+        now === "gone"
+          ? "is gone"
+          : now === "unreadable"
+            ? "cannot be read"
+            : "changed after this run wrote it";
+      notes.push(`${paths.basename(file)} ${what}`);
     }
   }
   return { current, notes };
