@@ -223,6 +223,43 @@ describe("runProgram", function () {
     await until(() => fs.existsSync(done), "the child finishes its cleanup", 3000);
   });
 
+  it("waits for a child still in the group when the wrapper exits first", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const child = `setTimeout(() => { process.stdout.write("late"); process.exit(0); }, 800);`;
+    const wrapper = `require("child_process").spawn(${JSON.stringify(NODE)}, ["-e", ${JSON.stringify(child)}], { stdio: "inherit" }); process.stdout.write("early "); process.exit(0);`;
+    const finished = await runProgram(NODE, ["-e", wrapper], { cwd: folder, graceMs: 300 });
+    assert.equal(finished.stdout, "early late");
+  });
+
+  it("sends no forced kill to a group that ended on the polite signal", async function () {
+    if (process.platform === "win32") {
+      this.skip();
+    }
+    const signals: string[] = [];
+    const kill = process.kill.bind(process);
+    process.kill = (pid: number, signal?: string | number) => {
+      signals.push(String(signal));
+      return kill(pid, signal);
+    };
+    try {
+      const controller = new AbortController();
+      const running = runProgram(NODE, ["-e", "setInterval(() => {}, 1000)"], {
+        cwd: folder,
+        signal: controller.signal,
+        graceMs: 300,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      controller.abort();
+      await assert.rejects(running, RunCancelled);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      assert.ok(!signals.includes("SIGKILL"), signals.join(", "));
+    } finally {
+      process.kill = kill;
+    }
+  });
+
   it("ends a run that prints more than it may keep", async () => {
     await assert.rejects(
       runProgram(NODE, ["-e", 'process.stdout.write("x".repeat(4096)); setInterval(() => {}, 1000)'], {

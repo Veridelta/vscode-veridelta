@@ -103,6 +103,26 @@ function endTree(child: ChildProcess, force: boolean): void {
   }
 }
 
+/**
+ * Whether anything in a child's process group still runs.
+ *
+ * On Windows there is no group to ask, and a stop has already ended the
+ * tree with taskkill /F, so nothing is left to wait for.
+ */
+function groupRuns(child: ChildProcess): boolean {
+  const pid = child.pid;
+  if (pid === undefined || process.platform === "win32") {
+    return false;
+  }
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM means a member runs as another user; ESRCH means the group is gone.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /** End every process still running, as the extension stops. */
 export function endAll(): void {
   for (const child of live) {
@@ -196,11 +216,16 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       }
     });
 
-    // A program that ended on its own has written all it will; what a process
-    // outside the group still holds is read for a grace period, then let go.
+    // A program that ended on its own may leave children in its group that
+    // still print, so their output is read until the group ends. What a
+    // process outside the group still holds is then read for a grace period
+    // and let go. A cancel or a timeout still bounds the wait.
+    const drainWhenGroupEnds = (): void => {
+      drainTimer = groupRuns(child) ? setTimeout(drainWhenGroupEnds, 100) : setTimeout(release, graceMs);
+    };
     child.on("exit", () => {
       if (stopped === undefined) {
-        drainTimer = setTimeout(release, graceMs);
+        drainWhenGroupEnds();
       }
     });
 
@@ -210,12 +235,14 @@ export function runProgram(program: string, args: string[], options: SpawnOption
       signal?.removeEventListener("abort", onAbort);
       clearTimeout(timeoutTimer);
       clearTimeout(drainTimer);
-      if (stopped === undefined) {
+      // A stopped tree whose group still runs keeps its pending kill: the rest
+      // of the group gets its grace period, then the timer kills it, so nothing
+      // outlives the run. A group that has ended needs no kill, and a late one
+      // could reach a process that took its number since.
+      if (stopped === undefined || !groupRuns(child)) {
         live.delete(child);
         clearTimeout(forceTimer);
       }
-      // A stopped tree keeps its pending kill: the rest of the group gets its
-      // grace period, then the timer kills it, so nothing outlives the run.
     };
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (settled) {
