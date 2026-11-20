@@ -4,7 +4,15 @@
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 
-import { artifactPlan, candidatesFor, FORMATS, planArtifacts } from "../../src/artifacts";
+import {
+  artifactPlan,
+  candidatesFor,
+  FORMATS,
+  isInside,
+  planArtifacts,
+  unchanged,
+  writtenSince,
+} from "../../src/artifacts";
 
 const BASE = "primary_keys: [id]\nsource:\n  path: legacy.csv\ntarget:\n  path: modern.csv\n";
 const FOLDER = path.resolve("/work/project");
@@ -123,5 +131,38 @@ describe("candidatesFor", () => {
   it("keeps nothing for a run with no rows that differ", () => {
     assert.ok(plan);
     assert.deepEqual(candidatesFor(plan, { added: 0, removed: 0, changed: 0 }), []);
+  });
+});
+
+describe("isInside", () => {
+  it("counts a path in the folder, and the folder itself, as inside", () => {
+    assert.equal(isInside("/ws/out/a.csv", "/ws"), true);
+    assert.equal(isInside("/ws", "/ws"), true);
+    assert.equal(isInside("/ws/..data/a.csv", "/ws"), true, "a folder whose name starts with two dots");
+  });
+
+  it("counts a parent, a sibling, and another drive as outside", () => {
+    assert.equal(isInside("/a.csv", "/ws"), false);
+    assert.equal(isInside("/ws2/a.csv", "/ws"), false);
+    assert.equal(isInside("/ws/../etc/passwd", "/ws"), false);
+    assert.equal(isInside("D:\\data\\a.csv", "C:\\ws", path.win32), false);
+    assert.equal(isInside("C:\\ws\\..data\\a.csv", "C:\\ws", path.win32), true);
+  });
+});
+
+describe("writtenSince and unchanged", () => {
+  const started = Date.UTC(2026, 10, 20, 12);
+
+  it("takes a file written since the run started, allowing for coarse clocks", () => {
+    assert.equal(writtenSince({ mtimeMs: started + 5, size: 1 }, started), true);
+    assert.equal(writtenSince({ mtimeMs: started - 1500, size: 1 }, started), true);
+    assert.equal(writtenSince({ mtimeMs: started - 60_000, size: 1 }, started), false);
+  });
+
+  it("tells a file another run rewrote from the one this run wrote", () => {
+    assert.equal(unchanged({ mtimeMs: 10, size: 4 }, { mtimeMs: 10, size: 4 }), true);
+    assert.equal(unchanged({ mtimeMs: 10, size: 4 }, { mtimeMs: 11, size: 4 }), false);
+    assert.equal(unchanged({ mtimeMs: 10, size: 4 }, { mtimeMs: 10, size: 5 }), false);
+    assert.equal(unchanged({ mtimeMs: 10, size: 4 }, undefined), false);
   });
 });

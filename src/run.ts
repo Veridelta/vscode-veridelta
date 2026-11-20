@@ -12,7 +12,15 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { candidatesFor, planArtifacts, type ArtifactPlan } from "./artifacts";
+import {
+  candidatesFor,
+  isInside,
+  planArtifacts,
+  unchanged,
+  writtenSince,
+  type ArtifactPlan,
+  type FileStamp,
+} from "./artifacts";
 import { CommandNotFound, RunCancelled, runVeridelta, type Finished } from "./cli";
 import {
   logStderr,
@@ -39,18 +47,43 @@ export interface RunOutcome {
   artifactsReadable: boolean;
   /** When the run started, in milliseconds since the epoch, so files from earlier runs can be told apart. */
   startedAt: number;
+  /** The discrepancy files this run wrote, by path, as they were when it finished. */
+  written: Record<string, FileStamp>;
 }
 
-/** How much older than the run a file it wrote may look, for file systems that keep coarse times. */
-const CLOCK_SLACK_MS = 2000;
-
-/** Whether a file is there and was written since `since`. */
-function writtenSince(file: string, since: number): boolean {
+/** When a file was written and its size, or undefined when it is not there. */
+function stampOf(file: string): FileStamp | undefined {
   try {
-    return statSync(file).mtimeMs >= since - CLOCK_SLACK_MS;
+    const { mtimeMs, size } = statSync(file);
+    return { mtimeMs, size };
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+/**
+ * The discrepancy files a run wrote, as they are when it finishes.
+ *
+ * A file of a kind the summary counts none of, or one older than the run, is
+ * left from an earlier run and is not this run's.
+ */
+function writtenBy(
+  plan: ArtifactPlan | undefined,
+  counts: RunSummary,
+  startedAt: number,
+): Record<string, FileStamp> {
+  const written: Record<string, FileStamp> = {};
+  if (plan === undefined) {
+    return written;
+  }
+  for (const name of candidatesFor(plan, counts)) {
+    const file = path.join(plan.folder, name);
+    const stamp = stampOf(file);
+    if (stamp !== undefined && writtenSince(stamp, startedAt)) {
+      written[file] = stamp;
+    }
+  }
+  return written;
 }
 
 const OPEN_REPORT = "Open report";
@@ -104,12 +137,6 @@ export function openReportOf(outcome: RunOutcome): Promise<vscode.WebviewPanel> 
   return openReport(outcome.reportFile, `Veridelta report: ${path.basename(outcome.configFile)}`);
 }
 
-/** Whether a path lies inside a folder, or is the folder. */
-function isInside(file: string, folder: string): boolean {
-  const relative = path.relative(folder, file);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 /**
  * Why a file at a candidate's name is not opened, or undefined when it opens.
  *
@@ -139,8 +166,9 @@ function reasonToSkip(file: string): string | undefined {
 /**
  * Open the discrepancy files a run wrote, and return them.
  *
- * Only files this run wrote open: a kind the summary counts none of, or a
- * file older than the run, is left from an earlier run. CSV, JSON, and
+ * Only the files this run wrote open, and only while they are as it left
+ * them: a later run of the same configuration rewrites them, and they are
+ * then that run's. CSV, JSON, and
  * NDJSON open as text documents. Parquet and Arrow are shown in the
  * Explorer, with a hint naming the format that opens as text.
  */
@@ -155,9 +183,15 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
     return [];
   }
   const { summary } = outcome;
-  const files = candidatesFor(plan, summary)
-    .map((name) => path.join(plan.folder, name))
-    .filter((file) => writtenSince(file, outcome.startedAt));
+  const written = Object.entries(outcome.written);
+  const files = written.filter(([file, stamp]) => unchanged(stamp, stampOf(file))).map(([file]) => file);
+  const changed = written.filter(([file]) => !files.includes(file)).map(([file]) => file);
+  if (changed.length > 0 && files.length === 0) {
+    void showInformation(
+      `A later run replaced the discrepancy files in ${plan.folder}, so this run's are gone. Open them from the later run's notification.`,
+    );
+    return [];
+  }
   if (files.length === 0) {
     const differ = summary.added + summary.removed + summary.changed;
     void showInformation(
@@ -169,7 +203,7 @@ export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
   }
   if (plan.textual) {
     const opened: string[] = [];
-    const skipped: string[] = [];
+    const skipped = changed.map((file) => `${path.basename(file)} changed after this run wrote it`);
     for (const file of files) {
       const reason = reasonToSkip(file);
       if (reason !== undefined) {
@@ -318,6 +352,7 @@ export async function runComparison(
   }
   const configText = await readFile(configFile, "utf8");
   const read = planArtifacts(configText, folder);
+  const written = writtenBy(read.plan, parsed.summary, startedAt);
   const outcome: RunOutcome = {
     configFile,
     summary: parsed.summary,
@@ -325,6 +360,7 @@ export async function runComparison(
     artifacts: read.plan,
     artifactsReadable: read.readable,
     startedAt,
+    written,
   };
   offerOutcome(outcome, surfaces).catch((error: unknown) => {
     void showFailure(`Veridelta could not finish that: ${messageOf(error)}`, surfaces);

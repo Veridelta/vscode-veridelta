@@ -77,6 +77,36 @@ function isFormat(value: unknown): value is ArtifactFormat {
   return typeof value === "string" && (FORMATS as readonly string[]).includes(value);
 }
 
+/** When a file was last written and how big it was, enough to tell whether another run rewrote it. */
+export interface FileStamp {
+  mtimeMs: number;
+  size: number;
+}
+
+/** How much older than the run a file it wrote may look, for file systems that keep coarse times. */
+export const CLOCK_SLACK_MS = 2000;
+
+/** Whether a file was written since the run started, allowing for coarse file times. */
+export function writtenSince(stamp: FileStamp, startedAt: number): boolean {
+  return stamp.mtimeMs >= startedAt - CLOCK_SLACK_MS;
+}
+
+/** Whether a file is still as the run left it; false when it is gone or another run rewrote it. */
+export function unchanged(then: FileStamp, now: FileStamp | undefined): boolean {
+  return now?.mtimeMs === then.mtimeMs && now.size === then.size;
+}
+
+/**
+ * Whether a path lies inside a folder, or is the folder.
+ *
+ * @param paths The path functions to use; Windows paths in a test pass `path.win32`.
+ */
+export function isInside(file: string, folder: string, paths: path.PlatformPath = path): boolean {
+  const relative = paths.relative(folder, file);
+  const outside = relative === ".." || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative);
+  return !outside;
+}
+
 /** A node, with one alias followed. */
 function resolved(document: Document, node: unknown): unknown {
   return isAlias(node) ? node.resolve(document) : node;

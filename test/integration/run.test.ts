@@ -131,20 +131,36 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("skips a file older than the run that asks for it", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const out = path.join(workspaceFolder().fsPath, "out");
+    fs.rmSync(out, { recursive: true, force: true });
+    // A keys-only file an earlier run compared where the data is stored would leave.
+    fs.mkdirSync(out);
+    const stale = path.join(out, "added_rows_pks_only.csv");
+    fs.writeFileSync(stale, "id\n9\n");
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(stale, hourAgo, hourAgo);
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
-    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    fs.utimesSync(path.join(outcome.artifacts.folder, "added_rows.csv"), hourAgo, hourAgo);
     const opened = await api.openArtifacts(outcome);
     assert.deepEqual(
       opened.map((file) => path.basename(file)),
-      ["removed_rows.csv", "changed_rows.csv"],
+      ["added_rows.csv", "removed_rows.csv", "changed_rows.csv"],
     );
   });
 
-  it("opens the files it can, and names a folder at a file's name", async () => {
+  it("leaves an earlier notification's files closed once a later run replaced them", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const earlier = await api.runComparison(fixture("with_output.yaml"));
+    const later = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(earlier?.artifacts && later?.artifacts);
+    assert.deepEqual(await api.openArtifacts(earlier), []);
+    assert.match(api.notifications().at(-1) ?? "", /later run/);
+    assert.equal((await api.openArtifacts(later)).length, 3);
+  });
+
+  it("opens the files it can, and names one that changed after the run", async () => {
     fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
@@ -157,28 +173,35 @@ describe("Veridelta: Run comparison", function () {
       opened.map((file) => path.basename(file)),
       ["removed_rows.csv", "changed_rows.csv"],
     );
-    assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv is not a file/);
+    assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv changed after this run wrote it/);
   });
 
-  it("does not follow a link at a file's name out of the workspace", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
-    const api = await extension();
-    const outcome = await api.runComparison(fixture("with_output.yaml"));
-    assert.ok(outcome?.artifacts);
+  it("does not follow a link at a file's name out of the workspace", async function () {
+    if (process.platform === "win32") {
+      // Creating a link needs privileges a Windows runner may not have.
+      this.skip();
+    }
+    const out = path.join(workspaceFolder().fsPath, "out");
+    fs.rmSync(out, { recursive: true, force: true });
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "veridelta-outside-"));
     try {
+      // A link planted before the run, which Veridelta 0.42.2 writes through and later ones replace.
+      fs.mkdirSync(out);
       const target = path.join(outside, "elsewhere.csv");
       fs.writeFileSync(target, "id\n1\n");
-      const added = path.join(outcome.artifacts.folder, "added_rows.csv");
-      fs.rmSync(added);
+      const added = path.join(out, "added_rows.csv");
       fs.symlinkSync(target, added);
-      const opened = await api.openArtifacts(outcome);
-      assert.deepEqual(
-        opened.map((file) => path.basename(file)),
-        ["removed_rows.csv", "changed_rows.csv"],
-      );
-      assert.ok(!vscode.workspace.textDocuments.some((document) => document.uri.fsPath === target));
-      assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv links outside the workspace/);
+      const api = await extension();
+      const outcome = await api.runComparison(fixture("with_output.yaml"));
+      assert.ok(outcome?.artifacts);
+      const opened = (await api.openArtifacts(outcome)).map((file) => path.basename(file));
+      if (fs.lstatSync(added).isSymbolicLink()) {
+        assert.deepEqual(opened, ["removed_rows.csv", "changed_rows.csv"]);
+        assert.ok(!vscode.workspace.textDocuments.some((document) => document.uri.fsPath === target));
+        assert.match(api.notifications().at(-1) ?? "", /added_rows\.csv links outside the workspace/);
+      } else {
+        assert.deepEqual(opened, ["added_rows.csv", "removed_rows.csv", "changed_rows.csv"]);
+      }
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
