@@ -1,6 +1,6 @@
 .vscode/**
 .vscode-test/**
-.vscode-test.mjs
+.vscode-test*.mjs
 .github/**
 src/**
 test/**
@@ -16,3 +16,4 @@ tsconfig.json
 **/*.ts
 AGENTS.md
 CONTRIBUTING.md
+SECURITY.md
