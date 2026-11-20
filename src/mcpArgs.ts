@@ -135,3 +135,41 @@ export function serverCommand(command: string[], folders: string[], settings: Mc
 export function takesAllowHost(help: string): boolean {
   return /--allow-host(?![\w-])/.test(help);
 }
+
+/** Whether the installed Veridelta takes `--allow-host`, as far as a probe of its help could tell. */
+export type HostSupport = "takes" | "lacks" | "unknown";
+
+/** The warnings about an older Veridelta this session has already shown. */
+export interface OlderWarnings {
+  unknown: boolean;
+  lacks: boolean;
+}
+
+/**
+ * The warning to show about what the installed Veridelta holds, if any, each kind at most once.
+ *
+ * A probe that could not tell runs again later, and a Veridelta it then finds
+ * without `--allow-host` still gets its own warning.
+ *
+ * @param shown The warnings shown so far; the one returned is marked shown.
+ * @param installed How to name the installed Veridelta, such as `Veridelta 0.42.2`.
+ */
+export function olderWarning(
+  shown: OlderWarnings,
+  installed: string,
+  support: HostSupport,
+  hostsSet: boolean,
+): string | undefined {
+  if (support === "unknown" && hostsSet && !shown.unknown && !shown.lacks) {
+    shown.unknown = true;
+    return "The extension could not tell whether the installed Veridelta takes --allow-host, so the agent's server starts without the hosts veridelta.mcp.allowHosts lists. A Veridelta without --allow-host lets the tools connect to any host a configuration names. The next start of the server asks again.";
+  }
+  if (support === "lacks" && !shown.lacks) {
+    shown.lacks = true;
+    const hosts = hostsSet
+      ? " veridelta.mcp.allowHosts does not apply to it, so its hosts are left out."
+      : "";
+    return `${installed} has no --allow-host. With it, the agent's tools can connect to any host a configuration names, and a tool's error can quote a value from the data with veridelta.mcp.allowRowValues off.${hosts} A Veridelta release after 0.42.2 holds the tools to the hosts that setting lists and keeps database errors that quote values from the agent.`;
+  }
+  return undefined;
+}

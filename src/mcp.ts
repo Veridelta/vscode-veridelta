@@ -12,12 +12,15 @@ import * as vscode from "vscode";
 import { cliVersion, configuredCommand, runVeridelta } from "./cli";
 import {
   maxRowsOf,
+  olderWarning,
   rootFolders,
   serverCommand,
   serverEnv,
   splitHosts,
   takesAllowHost,
+  type HostSupport,
   type McpSettings,
+  type OlderWarnings,
 } from "./mcpArgs";
 import { showWarning } from "./notify";
 import { parseVersion } from "./version";
@@ -30,11 +33,8 @@ const LABEL = "Veridelta";
 /** How long a probe of the installed Veridelta may take before the server starts without its answer. */
 const PROBE_TIMEOUT_MS = 15_000;
 
-/** Whether the installed Veridelta takes `--allow-host`, as far as a probe of its help could tell. */
-type HostSupport = "takes" | "lacks" | "unknown";
-
-/** Whether this session has already said what the installed Veridelta does not hold. */
-let warnedAboutOlder = false;
+/** The warnings about an older Veridelta this session has already shown. */
+const olderWarnings: OlderWarnings = { unknown: false, lacks: false };
 
 /** The allowHosts entries this session has already named as left out. */
 let namedDropped = "";
@@ -130,26 +130,16 @@ async function probeHostSupport(folder: string): Promise<HostSupport> {
 }
 
 /**
- * Say once what the installed Veridelta does not hold.
+ * Say what the installed Veridelta does not hold, each warning once.
  *
  * A Veridelta with no `--allow-host`, such as 0.42.2, also predates the
  * change that keeps database errors, which can quote values, from the agent.
  */
 function warnAboutOlder(installed: string, support: HostSupport, hostsSet: boolean): void {
-  if (warnedAboutOlder || support === "takes" || (support === "unknown" && !hostsSet)) {
-    return;
+  const message = olderWarning(olderWarnings, installed, support, hostsSet);
+  if (message !== undefined) {
+    void showWarning(message);
   }
-  warnedAboutOlder = true;
-  if (support === "unknown") {
-    void showWarning(
-      "The extension could not tell whether the installed Veridelta takes --allow-host, so the agent's server starts without the hosts veridelta.mcp.allowHosts lists. The next start of the server asks again.",
-    );
-    return;
-  }
-  const hosts = hostsSet ? " veridelta.mcp.allowHosts does not apply to it, so its hosts are left out." : "";
-  void showWarning(
-    `${installed} has no --allow-host. With it, the agent's tools can connect to any host a configuration names, and a tool's error can quote a value from the data with veridelta.mcp.allowRowValues off.${hosts} A Veridelta release after 0.42.2 holds the tools to the hosts that setting lists and keeps database errors that quote values from the agent.`,
-  );
 }
 
 /** What agent mode asks for its servers: one Veridelta server, restarted when the folders or the settings change. */

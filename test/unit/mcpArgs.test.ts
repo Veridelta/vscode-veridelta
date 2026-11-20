@@ -11,6 +11,7 @@ import {
   maxRowsOf,
   MOST_MAX_ROWS,
   HOST_PATTERN,
+  olderWarning,
   rootFolders,
   serverCommand,
   serverEnv,
@@ -189,5 +190,36 @@ describe("serverEnv", () => {
     for (const value of [undefined, null, "A=1", ["A"], 3]) {
       assert.deepEqual(serverEnv(value), {}, String(value));
     }
+  });
+});
+
+describe("olderWarning", () => {
+  it("still warns about a Veridelta without --allow-host after a probe that could not tell", () => {
+    const shown = { unknown: false, lacks: false };
+    assert.match(olderWarning(shown, "Veridelta 0.42.2", "unknown", true) ?? "", /could not tell/);
+    assert.match(
+      olderWarning(shown, "Veridelta 0.42.2", "lacks", true) ?? "",
+      /^Veridelta 0\.42\.2 has no --allow-host/,
+    );
+    assert.equal(olderWarning(shown, "Veridelta 0.42.2", "lacks", true), undefined, "once");
+    assert.equal(olderWarning(shown, "Veridelta 0.42.2", "unknown", true), undefined, "nothing new to say");
+  });
+
+  it("says nothing for a Veridelta that takes --allow-host, or for an unknown answer with no hosts set", () => {
+    const shown = { unknown: false, lacks: false };
+    assert.equal(olderWarning(shown, "Veridelta 0.43.0", "takes", true), undefined);
+    assert.equal(olderWarning(shown, "Veridelta", "unknown", false), undefined);
+    assert.deepEqual(shown, { unknown: false, lacks: false });
+  });
+
+  it("names the hosts setting only when hosts are set", () => {
+    assert.doesNotMatch(
+      olderWarning({ unknown: false, lacks: false }, "Veridelta 0.42.2", "lacks", false) ?? "",
+      /does not apply/,
+    );
+    assert.match(
+      olderWarning({ unknown: false, lacks: false }, "Veridelta 0.42.2", "lacks", true) ?? "",
+      /does not apply/,
+    );
   });
 });
