@@ -97,6 +97,35 @@ describe("planArtifacts", () => {
     assert.equal(artifactPlan(`${merged}output_path: mine\n`, FOLDER)?.folder, path.resolve(FOLDER, "mine"));
   });
 
+  it("follows merges as PyYAML does", () => {
+    // Each answer is what PyYAML's safe_load, which Veridelta reads with, gives for output_path.
+    const cases: [string, string][] = [
+      ["%YAML 1.1\n---\n<<: {output_path: out, output_format: csv}\n", "out"],
+      ["<<: {<<: {output_path: deep}}\n", "deep"],
+      ["<<: {output_path: first}\n<<: {output_path: second}\n", "second"],
+      ["<<: {output_path: a, output_path: b}\n", "b"],
+      ["<<: [{output_path: first}, {output_path: second}]\n", "first"],
+      ["output_path: own\n<<: {output_path: merged}\n", "own"],
+      ["<<: [{<<: {output_path: inner}}, {output_path: second}]\n", "inner"],
+    ];
+    for (const [text, expected] of cases) {
+      assert.equal(artifactPlan(`${text}${BASE}`, FOLDER)?.folder, path.resolve(FOLDER, expected), text);
+    }
+  });
+
+  it("looks through repeated merges of one anchor in about the time of its text", () => {
+    const levels = ["l0: &l0 {x: 1}"];
+    for (let level = 1; level <= 30; level += 1) {
+      levels.push(
+        `l${String(level)}: &l${String(level)} {<<: [*l${String(level - 1)}, *l${String(level - 1)}]}`,
+      );
+    }
+    const started = performance.now();
+    const plan = planArtifacts(`${levels.join("\n")}\n<<: *l30\n${BASE}`, FOLDER);
+    assert.deepEqual(plan, { plan: undefined, readable: true });
+    assert.ok(performance.now() - started < 2000);
+  });
+
   it("reads a file whose anchors expand past any reasonable size, without expanding them", () => {
     const laughs = ["a: &a [x, x, x, x, x, x, x, x, x, x]"];
     for (let level = 1; level < 10; level += 1) {

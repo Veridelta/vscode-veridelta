@@ -11,9 +11,9 @@
  * which is the configuration's folder.
  *
  * Only the two top-level settings are read, from the document tree as
- * Veridelta's YAML reader would see them: the last of duplicate keys wins,
- * an alias is followed once, and a `<<` merge key supplies what the mapping
- * does not set itself. Nothing is expanded, so a file of nested anchors costs
+ * Veridelta's YAML reader, PyYAML, would see them: the last of duplicate keys
+ * wins, an alias is followed, and `<<` merge keys apply in PyYAML's order,
+ * nested ones included. Nothing is expanded, so a file of nested anchors costs
  * no more than its text. This module imports nothing from VS Code, so its
  * tests run under plain Mocha.
  */
@@ -112,44 +112,77 @@ function resolved(document: Document, node: unknown): unknown {
   return isAlias(node) ? node.resolve(document) : node;
 }
 
-/** The mappings a `<<` value names, in the order their keys apply: earlier ones win. */
+/** Whether a key is YAML's merge key: a plain `<<`, or the symbol the YAML 1.1 schema reads it as. */
+function isMergeKey(key: unknown): boolean {
+  if (!isScalar(key)) {
+    return false;
+  }
+  const value: unknown = key.value;
+  return value === "<<" || (typeof value === "symbol" && value.description === "<<");
+}
+
+/**
+ * The mappings one `<<` value merges, in the order PyYAML lays their pairs down.
+ *
+ * A later pair wins, so in a list, whose first mapping wins, the order is reversed.
+ */
 function mergedMaps(document: Document, value: unknown): YAMLMap[] {
   const node = resolved(document, value);
   if (isMap(node)) {
     return [node];
   }
   if (isSeq(node)) {
-    return node.items.map((item) => resolved(document, item)).filter((item): item is YAMLMap => isMap(item));
+    return node.items
+      .map((item) => resolved(document, item))
+      .filter((item): item is YAMLMap => isMap(item))
+      .reverse();
   }
   return [];
 }
 
-/** A top-level setting's value: the last direct pair, else the first merged mapping that sets it. */
-function setting(document: Document, map: YAMLMap, key: string): unknown {
-  let direct: unknown;
-  let found = false;
-  const merges: unknown[] = [];
+/** No pair sets the key. */
+const MISSING = Symbol("missing");
+
+/**
+ * A key's value node in a mapping, as PyYAML's merge flattening gives it.
+ *
+ * PyYAML lays down the pairs of each merged mapping, itself flattened the
+ * same way, in the order of the `<<` keys, then the mapping's own pairs, and
+ * the last pair with the key wins. So an own pair beats any merge, a later
+ * `<<` beats an earlier one, and the last duplicate wins. Each mapping is
+ * looked at once per key, so repeated aliases cost no more than the text,
+ * and an alias loop ends.
+ */
+function lookup(document: Document, map: YAMLMap, key: string, seen: Map<YAMLMap, unknown>): unknown {
+  if (seen.has(map)) {
+    return seen.get(map);
+  }
+  // A mapping still being looked at merges itself: PyYAML fails there, and here it sets nothing.
+  seen.set(map, MISSING);
+  let found: unknown = MISSING;
   for (const pair of map.items) {
-    const name = isScalar(pair.key) ? pair.key.value : pair.key;
-    if (name === key) {
-      direct = pair.value;
-      found = true;
-    } else if (name === "<<") {
-      merges.push(pair.value);
-    }
-  }
-  if (found) {
-    return scalarValue(resolved(document, direct));
-  }
-  for (const merge of merges) {
-    for (const source of mergedMaps(document, merge)) {
-      const pair = source.items.find((item) => isScalar(item.key) && item.key.value === key);
-      if (pair !== undefined) {
-        return scalarValue(resolved(document, pair.value));
+    if (isMergeKey(pair.key)) {
+      for (const merged of mergedMaps(document, pair.value)) {
+        const value = lookup(document, merged, key, seen);
+        if (value !== MISSING) {
+          found = value;
+        }
       }
     }
   }
-  return undefined;
+  for (const pair of map.items) {
+    if (!isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key) {
+      found = pair.value;
+    }
+  }
+  seen.set(map, found);
+  return found;
+}
+
+/** A top-level setting's value, with merges and aliases followed as Veridelta's YAML reader follows them. */
+function setting(document: Document, map: YAMLMap, key: string): unknown {
+  const node = lookup(document, map, key, new Map());
+  return node === MISSING ? undefined : scalarValue(resolved(document, node));
 }
 
 /** A scalar's value, or undefined for a mapping, a list, or nothing. */
