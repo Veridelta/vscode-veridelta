@@ -6,13 +6,13 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { artifactPlan, type ArtifactPlan } from "./artifacts";
+import { artifactPlan, candidatesFor, type ArtifactPlan } from "./artifacts";
 import { CommandNotFound, RunCancelled, runVeridelta, type Finished } from "./cli";
 import {
   logStderr,
@@ -34,6 +34,20 @@ export interface RunOutcome {
   reportFile: string;
   /** Where the discrepancy files went, or undefined when the configuration names no `output_path`. */
   artifacts: ArtifactPlan | undefined;
+  /** When the run started, in milliseconds since the epoch, so files from earlier runs can be told apart. */
+  startedAt: number;
+}
+
+/** How much older than the run a file it wrote may look, for file systems that keep coarse times. */
+const CLOCK_SLACK_MS = 2000;
+
+/** Whether a file is there and was written since `since`. */
+function writtenSince(file: string, since: number): boolean {
+  try {
+    return statSync(file).mtimeMs >= since - CLOCK_SLACK_MS;
+  } catch {
+    return false;
+  }
 }
 
 const OPEN_REPORT = "Open report";
@@ -62,21 +76,30 @@ export function openReportOf(outcome: RunOutcome): Promise<vscode.WebviewPanel> 
 }
 
 /**
- * Open the discrepancy files a run wrote, and return the ones that exist.
+ * Open the discrepancy files a run wrote, and return them.
  *
- * CSV, JSON, and NDJSON open as text documents. Parquet and Arrow are shown
- * in the Explorer, with a hint naming the format that opens as text.
+ * Only files this run wrote open: a kind the summary counts none of, or a
+ * file older than the run, is left from an earlier run. CSV, JSON, and
+ * NDJSON open as text documents. Parquet and Arrow are shown in the
+ * Explorer, with a hint naming the format that opens as text.
  */
-export async function openArtifacts(plan: ArtifactPlan | undefined): Promise<string[]> {
+export async function openArtifacts(outcome: RunOutcome): Promise<string[]> {
+  const plan = outcome.artifacts;
   if (plan === undefined) {
     void showInformation("This configuration sets no output_path, so the run wrote no discrepancy files.");
     return [];
   }
-  const files = plan.candidates
+  const { summary } = outcome;
+  const files = candidatesFor(plan, summary)
     .map((name) => path.join(plan.folder, name))
-    .filter((file) => existsSync(file));
+    .filter((file) => writtenSince(file, outcome.startedAt));
   if (files.length === 0) {
-    void showInformation(`The run wrote no discrepancy files to ${plan.folder}: no rows differ.`);
+    const differ = summary.added + summary.removed + summary.changed;
+    void showInformation(
+      differ === 0
+        ? "No rows differ, so the run wrote no discrepancy files."
+        : `The run counted ${String(differ)} rows that differ, and wrote no discrepancy files to ${plan.folder} that it could find.`,
+    );
     return [];
   }
   if (plan.textual) {
@@ -102,7 +125,7 @@ async function offerOutcome(outcome: RunOutcome, surfaces: Surfaces): Promise<vo
   if (choice === OPEN_REPORT) {
     await openReportOf(outcome);
   } else if (choice === OPEN_FILES) {
-    await openArtifacts(outcome.artifacts);
+    await openArtifacts(outcome);
   } else if (choice === SHOW_OUTPUT) {
     surfaces.output.show(true);
   }
@@ -145,6 +168,7 @@ export async function runComparison(
   const name = path.basename(configFile);
   const reportFile = await reportPath(context, configFile);
   const args = ["run", "-c", configFile, "--json", "--html", reportFile, ...maxRowsArguments()];
+  const startedAt = Date.now();
   let finished: Finished;
   try {
     finished = await withProgress(
@@ -192,6 +216,7 @@ export async function runComparison(
     summary: parsed.summary,
     reportFile,
     artifacts: artifactPlan(configText, folder),
+    startedAt,
   };
   void offerOutcome(outcome, surfaces);
   return outcome;

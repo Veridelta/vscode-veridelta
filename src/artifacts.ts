@@ -47,6 +47,28 @@ export interface ArtifactPlan {
   candidates: string[];
 }
 
+/** The rows each kind of discrepancy file holds, as the run's summary counts them. */
+export interface DifferenceCounts {
+  added: number;
+  removed: number;
+  changed: number;
+}
+
+/**
+ * The candidates a run with these counts can have written, in the order to open them.
+ *
+ * Veridelta skips an empty set, so a file for a kind the run counted none of
+ * is left from an earlier run.
+ */
+export function candidatesFor(plan: ArtifactPlan, counts: DifferenceCounts): string[] {
+  return plan.candidates.filter(
+    (name) =>
+      (name.startsWith("added_rows") && counts.added > 0) ||
+      (name.startsWith("removed_rows") && counts.removed > 0) ||
+      (name.startsWith("changed_rows") && counts.changed > 0),
+  );
+}
+
 function isFormat(value: unknown): value is ArtifactFormat {
   return typeof value === "string" && (FORMATS as readonly string[]).includes(value);
 }

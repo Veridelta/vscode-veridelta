@@ -1,0 +1,8 @@
+# Both sides are one file, so the run passes and writes no discrepancy files.
+primary_keys: [id]
+source:
+  path: legacy.csv
+target:
+  path: legacy.csv
+output_path: out
+output_format: csv

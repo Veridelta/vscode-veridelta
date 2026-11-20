@@ -10,7 +10,6 @@
 
 import * as vscode from "vscode";
 
-import type { ArtifactPlan } from "./artifacts";
 import { pickConfiguration } from "./configPicker";
 import { registerMcpProvider, type VerideltaMcpProvider } from "./mcp";
 import { recentNotifications, showInformation, type Surfaces } from "./notify";
@@ -23,7 +22,7 @@ export interface Api {
   validateDocument(document: vscode.TextDocument): Promise<vscode.Diagnostic[]>;
   runComparison(uri: vscode.Uri): Promise<RunOutcome | undefined>;
   openReport(outcome: RunOutcome): Promise<vscode.WebviewPanel>;
-  openArtifacts(plan: ArtifactPlan | undefined): Promise<string[]>;
+  openArtifacts(outcome: RunOutcome): Promise<string[]>;
   diagnostics: vscode.DiagnosticCollection;
   /** The provider agent mode asks for the Veridelta server. */
   mcpProvider: VerideltaMcpProvider;

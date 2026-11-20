@@ -4,7 +4,7 @@
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 
-import { artifactPlan, FORMATS } from "../../src/artifacts";
+import { artifactPlan, candidatesFor, FORMATS } from "../../src/artifacts";
 
 const BASE = "primary_keys: [id]\nsource:\n  path: legacy.csv\ntarget:\n  path: modern.csv\n";
 const FOLDER = path.resolve("/work/project");
@@ -55,5 +55,25 @@ describe("artifactPlan", () => {
     assert.equal(artifactPlan(`${BASE}output_path: ""\n`, FOLDER), undefined);
     assert.equal(artifactPlan("a: [1,", FOLDER), undefined);
     assert.equal(artifactPlan("- just\n- a list\n", FOLDER), undefined);
+  });
+});
+
+describe("candidatesFor", () => {
+  const plan = artifactPlan(`${BASE}output_path: out\noutput_format: csv\n`, FOLDER);
+
+  it("keeps each kind the run counted rows of, local and pushdown names alike", () => {
+    assert.ok(plan);
+    assert.deepEqual(candidatesFor(plan, { added: 0, removed: 2, changed: 1 }), [
+      "removed_rows.csv",
+      "changed_rows.csv",
+      "removed_rows_pks_only.csv",
+      "changed_rows_pks_only.csv",
+      "changed_rows_sample.csv",
+    ]);
+  });
+
+  it("keeps nothing for a run with no rows that differ", () => {
+    assert.ok(plan);
+    assert.deepEqual(candidatesFor(plan, { added: 0, removed: 0, changed: 0 }), []);
   });
 });

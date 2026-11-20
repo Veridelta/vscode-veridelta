@@ -48,7 +48,7 @@ describe("Veridelta: Run comparison", function () {
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
     assert.equal(outcome.artifacts.format, "csv");
-    const opened = await api.openArtifacts(outcome.artifacts);
+    const opened = await api.openArtifacts(outcome);
     assert.deepEqual(
       opened.map((file) => path.basename(file)),
       ["added_rows.csv", "removed_rows.csv", "changed_rows.csv"],
@@ -66,6 +66,31 @@ describe("Veridelta: Run comparison", function () {
     const message = api.notifications().at(-1) ?? "";
     assert.match(message, /command:workbench\.action\.terminal\.new/, "the message names the column read");
     assert.doesNotMatch(message, link);
+  });
+
+  it("opens no file an earlier run left behind", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const failed = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(failed?.artifacts);
+    const passed = await api.runComparison(fixture("same_output.yaml"));
+    assert.ok(passed?.artifacts);
+    assert.equal(passed.summary.isMatch, true);
+    assert.deepEqual(await api.openArtifacts(passed), [], "a clean run wrote nothing to open");
+  });
+
+  it("skips a file older than the run that asks for it", async () => {
+    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    const api = await extension();
+    const outcome = await api.runComparison(fixture("with_output.yaml"));
+    assert.ok(outcome?.artifacts);
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(path.join(outcome.artifacts.folder, "added_rows.csv"), hourAgo, hourAgo);
+    const opened = await api.openArtifacts(outcome);
+    assert.deepEqual(
+      opened.map((file) => path.basename(file)),
+      ["removed_rows.csv", "changed_rows.csv"],
+    );
   });
 
   it("gives nothing for a configuration that does not load", async () => {
