@@ -243,7 +243,7 @@ describe("Veridelta in agent mode", function () {
     }
   });
 
-  it("ignores what a repository's own settings grant the agent", async () => {
+  it("ignores what a workspace's settings grant the agent", async () => {
     const api = await extension();
     const file = path.join(workspaceFolder().fsPath, ".vscode", "settings.json");
     const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined;

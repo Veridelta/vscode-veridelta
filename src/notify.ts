@@ -4,12 +4,14 @@
 /**
  * What the commands share of the editor: where problems and output go, and the notifications they raise.
  *
- * Every notification and progress title goes through this module. A message
- * can carry text from a configuration, from the data, or from Veridelta's
- * errors, and VS Code turns `[label](target)` in a message into a link that
- * runs a command on one click. `inert` breaks that pattern before anything
- * is shown, and the lint configuration keeps the other modules from calling
- * the notification API themselves.
+ * Every notification, progress title and progress message goes through this
+ * module. A message can carry text from a configuration, from the data, or
+ * from Veridelta's errors, and VS Code turns `[label](target)` in a message
+ * into a link that runs a command on one click. `inert` breaks that pattern
+ * before anything is shown, and a test checks what VS Code receives. The lint
+ * configuration flags the usual ways other modules could call the
+ * notification API themselves; a name built at run time on a renamed
+ * namespace would still pass it, so review is the last check.
  */
 
 import * as vscode from "vscode";
