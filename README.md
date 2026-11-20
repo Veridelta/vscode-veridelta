@@ -39,6 +39,7 @@ The extension registers `veridelta mcp` as an MCP server with VS Code's agent mo
 | `veridelta.mcp.allowRowValues` | `false` | Let the agent's tools return values from the data, as `--allow-row-values` does. User settings only. |
 | `veridelta.mcp.allowQueries` | `false` | Let a tool run a side's query as written, as `--allow-queries` does. User settings only. |
 | `veridelta.mcp.allowHosts` | `[]` | Hosts the agent's tools may connect to, each passed as `--allow-host`, in lowercase with no scheme or port, such as `db.internal`. User settings only. Needs a Veridelta after 0.42.2. |
+| `veridelta.mcp.env` | `{}` | Variables for the agent's server: a string sets one, and `null` removes one the editor's environment holds, such as one Veridelta refuses to start with. A `PATH` value is added to the end of the inherited `PATH`. User settings only. |
 | `veridelta.mcp.maxRows` | `50` | The most rows, or value map entries, one tool call returns, as `--max-rows` sets it, up to 1000. User settings only. |
 
 ## Schema

@@ -75,6 +75,27 @@ export function rootFolders(folders: readonly string[], isFolder: (folder: strin
   return folders.filter((folder) => isFolder(folder));
 }
 
+/**
+ * The variables to set, or to remove with null, in the server's environment.
+ *
+ * The server otherwise inherits the editor's whole environment, and Veridelta
+ * refuses to start on some variables it finds there. A name the environment
+ * cannot hold, or a value that is not a string or null, is left out.
+ */
+export function serverEnv(value: unknown): Record<string, string | null> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const env: Record<string, string | null> = {};
+  for (const [name, setting] of Object.entries(value as Record<string, unknown>)) {
+    const named = name.length > 0 && !name.includes("=") && !name.includes("\0");
+    if (named && (typeof setting === "string" || setting === null)) {
+      env[name] = setting;
+    }
+  }
+  return env;
+}
+
 /** A program and its arguments. */
 export interface ServerCommand {
   program: string;

@@ -13,6 +13,7 @@ import {
   HOST_PATTERN,
   rootFolders,
   serverCommand,
+  serverEnv,
   splitHosts,
   takesAllowHost,
 } from "../../src/mcpArgs";
@@ -167,5 +168,26 @@ describe("splitHosts", () => {
     const declared =
       manifest.contributes.configuration.properties["veridelta.mcp.allowHosts"]?.items?.pattern;
     assert.equal(declared, HOST_PATTERN.source);
+  });
+});
+
+describe("serverEnv", () => {
+  it("keeps names with a string to set or null to remove", () => {
+    assert.deepEqual(serverEnv({ POLARS_TEMP_DIR: "/tmp/p", PIP_INDEX_URL: null }), {
+      POLARS_TEMP_DIR: "/tmp/p",
+      PIP_INDEX_URL: null,
+    });
+  });
+
+  it("drops a name the environment cannot hold, and a value of another type", () => {
+    assert.deepEqual(serverEnv({ "": "x", "A=B": "x", "NUL\u0000": "x", N: 5, M: true, O: {}, OK: "1" }), {
+      OK: "1",
+    });
+  });
+
+  it("is empty for anything but an object", () => {
+    for (const value of [undefined, null, "A=1", ["A"], 3]) {
+      assert.deepEqual(serverEnv(value), {}, String(value));
+    }
   });
 });

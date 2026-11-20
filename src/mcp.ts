@@ -14,6 +14,7 @@ import {
   maxRowsOf,
   rootFolders,
   serverCommand,
+  serverEnv,
   splitHosts,
   takesAllowHost,
   type McpSettings,
@@ -104,7 +105,8 @@ export function currentDefinition(withHosts: boolean): vscode.McpStdioServerDefi
     folders,
     withHosts ? settings : { ...settings, allowHosts: [] },
   );
-  const definition = new vscode.McpStdioServerDefinition(LABEL, program, args);
+  const env = serverEnv(vscode.workspace.getConfiguration("veridelta.mcp").get("env"));
+  const definition = new vscode.McpStdioServerDefinition(LABEL, program, args, env);
   definition.cwd = vscode.Uri.file(first);
   return definition;
 }

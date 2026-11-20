@@ -47,6 +47,7 @@ describe("package.json", () => {
       "veridelta.mcp.allowQueries",
       "veridelta.mcp.allowHosts",
       "veridelta.mcp.maxRows",
+      "veridelta.mcp.env",
     ]) {
       assert.equal(settings[name]?.scope, "machine", name);
     }

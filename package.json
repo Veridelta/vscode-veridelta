@@ -101,6 +101,18 @@
           "scope": "machine",
           "markdownDescription": "Hosts the agent's tools may connect to, such as a database server, a bucket, or a URL's host, each passed as `veridelta mcp --allow-host`. Write each in lowercase, with no scheme or port. Empty, a tool reads only data on this machine, MotherDuck, Hugging Face, or BigQuery with the server's own credentials. Only user settings apply, so a workspace cannot widen what the agent reaches. Veridelta 0.42.2 has no `--allow-host`, and the setting applies from the release after it."
         },
+        "veridelta.mcp.env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": {},
+          "scope": "machine",
+          "markdownDescription": "Environment variables for the agent's server, which otherwise inherits the editor's whole environment. A string sets a variable, and `null` removes one, such as a variable Veridelta refuses to start with. A `PATH` value is added to the end of the inherited `PATH`. Only user settings apply, and Validate and Run are not affected."
+        },
         "veridelta.mcp.maxRows": {
           "type": "integer",
           "default": 50,

@@ -167,6 +167,25 @@ describe("Veridelta in agent mode", function () {
     );
   });
 
+  it("sets and removes the variables user settings name, for the server alone", async () => {
+    const api = await extension();
+    const configuration = vscode.workspace.getConfiguration("veridelta.mcp");
+    const changed = nextChange(api.mcpProvider.onDidChangeMcpServerDefinitions);
+    await configuration.update(
+      "env",
+      { POLARS_TEMP_DIR: "/tmp/polars", PIP_INDEX_URL: null },
+      vscode.ConfigurationTarget.Global,
+    );
+    try {
+      await changed;
+      const [server] = api.mcpProvider.provideMcpServerDefinitions();
+      assert.ok(server);
+      assert.deepEqual(server.env, { POLARS_TEMP_DIR: "/tmp/polars", PIP_INDEX_URL: null });
+    } finally {
+      await configuration.update("env", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
   it("ignores what a repository's own settings grant the agent", async () => {
     const api = await extension();
     const file = path.join(workspaceFolder().fsPath, ".vscode", "settings.json");
@@ -180,6 +199,7 @@ describe("Veridelta in agent mode", function () {
         "veridelta.mcp.allowRowValues": true,
         "veridelta.mcp.allowQueries": true,
         "veridelta.mcp.maxRows": 1_000_000,
+        "veridelta.mcp.env": { LD_PRELOAD: "/tmp/x.so" },
         "veridelta.run.htmlMaxRows": 7,
       }),
     );
@@ -189,6 +209,7 @@ describe("Veridelta in agent mode", function () {
       const [server] = api.mcpProvider.provideMcpServerDefinitions();
       assert.ok(server);
       assert.deepEqual(server.args, ["mcp", "--root", workspaceFolder().fsPath]);
+      assert.deepEqual(server.env, {});
     } finally {
       if (before === undefined) {
         fs.rmSync(file);
