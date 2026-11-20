@@ -12,7 +12,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { recentNotifications, withProgress } from "../../src/notify";
+import { plainProgress, recentNotifications, withProgress } from "../../src/notify";
 import type { RunOutcome } from "../../src/run";
 import { extension, fixture, openFixture, workspaceFolder } from "./helpers";
 
@@ -254,6 +254,16 @@ describe("Veridelta: Run comparison", function () {
     );
     const shown = recentNotifications().find((message) => message.startsWith("reading"));
     assert.equal(shown, "reading [Open] (command:workbench.action.terminal.new)");
+  });
+
+  it("passes on a progress message only with its links broken", () => {
+    const passed: { message?: string; increment?: number }[] = [];
+    plainProgress({ report: (value) => passed.push(value) }).report({
+      message: "[Open](command:x)",
+      increment: 5,
+    });
+    plainProgress({ report: (value) => passed.push(value) }).report({ increment: 7 });
+    assert.deepEqual(passed, [{ message: "[Open] (command:x)", increment: 5 }, { increment: 7 }]);
   });
 
   it("gives nothing for a configuration that does not load", async () => {

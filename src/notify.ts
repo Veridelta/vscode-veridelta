@@ -54,6 +54,17 @@ export function showError<T extends string>(message: string, ...items: T[]): The
   return vscode.window.showErrorMessage(shown(message), ...items);
 }
 
+/** A progress that shows each message as plain text before passing it on. */
+export function plainProgress(
+  progress: vscode.Progress<{ message?: string; increment?: number }>,
+): vscode.Progress<{ message?: string; increment?: number }> {
+  return {
+    report: (value) => {
+      progress.report(value.message === undefined ? value : { ...value, message: shown(value.message) });
+    },
+  };
+}
+
 /** Run a task under a progress indicator whose title and messages are shown as plain text. */
 export function withProgress<R>(
   options: vscode.ProgressOptions,
@@ -65,17 +76,7 @@ export function withProgress<R>(
   const title = options.title === undefined ? undefined : shown(options.title);
   return vscode.window.withProgress(
     title === undefined ? options : { ...options, title },
-    (progress, token) =>
-      task(
-        {
-          report: (value) => {
-            progress.report(
-              value.message === undefined ? value : { ...value, message: shown(value.message) },
-            );
-          },
-        },
-        token,
-      ),
+    (progress, token) => task(plainProgress(progress), token),
   );
 }
 
