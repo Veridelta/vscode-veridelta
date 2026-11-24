@@ -1,0 +1,102 @@
+# Copyright 2026 The Veridelta Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# AGENTS.md pins every dependency, and CI tests those pins. This workflow looks
+# past them on purpose. Once a week it tests against Veridelta main, and on the
+# oldest VS Code that engines.vscode allows. It gates nothing, and no pull
+# request runs it.
+
+name: Upstream
+
+on:
+  schedule:
+    # Mondays at 05:17 UTC.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  veridelta-main:
+    name: Veridelta main
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Main moves, and this job follows it on purpose.
+      VERIDELTA_SPEC: "veridelta[mcp] @ git+https://github.com/Veridelta/veridelta@main"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # This job runs code nothing pins, so it saves no cache that CI restores.
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+      - name: Install Veridelta
+        run: |
+          uv tool install "$VERIDELTA_SPEC"
+          uv tool dir --bin >> "$GITHUB_PATH"
+      - name: Show the Veridelta under test
+        run: veridelta --version
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Build the tests
+        run: npm run build:tests
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests
+        run: xvfb-run -a npm run test:integration
+
+  engine-floor:
+    name: VS Code 1.101.0
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+      - name: Install the Veridelta that CI pins
+        run: |
+          set -euo pipefail
+          # Read VERIDELTA_SPEC from ci.yml, so both workflows test one Veridelta.
+          spec="$(sed -n 's/^  VERIDELTA_SPEC: "\(.*\)"$/\1/p' .github/workflows/ci.yml)"
+          if [ -z "$spec" ] || [[ "$spec" == *$'\n'* ]]; then
+            echo "ci.yml has no single VERIDELTA_SPEC line to read." >&2
+            exit 1
+          fi
+          uv tool install "$spec"
+          uv tool dir --bin >> "$GITHUB_PATH"
+      - name: Show the Veridelta under test
+        run: veridelta --version
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Build the tests
+        run: npm run build:tests
+      - name: Integration tests on VS Code 1.101.0
+        run: xvfb-run -a npx --no -- vscode-test --config .vscode-test.floor.mjs

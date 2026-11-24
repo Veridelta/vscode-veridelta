@@ -6,6 +6,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+// The window functions whose text VS Code renders with `[label](command:...)` links.
+const RENDERED =
+  "/^(show(Error|Warning|Information)Message|withProgress|showInputBox|createInputBox|createQuickPick)$/";
+const THROUGH_NOTIFY =
+  "Show notifications, progress and input prompts through src/notify.ts, which keeps links out of the text.";
+
 export default defineConfig(
   globalIgnores(["dist/", "out/", ".vscode-test/", "node_modules/"]),
   {
@@ -23,6 +29,30 @@ export default defineConfig(
       curly: "error",
       eqeqeq: "error",
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
+    },
+  },
+  {
+    // A notification turns `[label](command:...)` into a link that runs a command.
+    // Messages carry text from configurations and data, so they go through
+    // src/notify.ts, which breaks every link before anything is shown.
+    files: ["src/**/*.ts"],
+    ignores: ["src/notify.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: `MemberExpression[property.name=${RENDERED}]`, message: THROUGH_NOTIFY },
+        // `const { showErrorMessage } = vscode.window` would pass the rule above.
+        { selector: `ObjectPattern > Property[key.name=${RENDERED}]`, message: THROUGH_NOTIFY },
+        // So would the names written as strings anywhere: a computed key, a
+        // member access, a Reflect.get argument or a variable's value.
+        { selector: `Literal[value=${RENDERED}]`, message: THROUGH_NOTIFY },
+        { selector: `TemplateElement[value.cooked=${RENDERED}]`, message: THROUGH_NOTIFY },
+        // And vscode.window itself, handed on whole or read with a computed name.
+        {
+          selector: `MemberExpression[object.name="vscode"][property.name="window"]:not(MemberExpression[computed=false] > .object)`,
+          message: THROUGH_NOTIFY,
+        },
+      ],
     },
   },
   {

@@ -10,7 +10,8 @@ This is the VS Code extension for [Veridelta](https://github.com/Veridelta/verid
 | `src/cli.ts`, `src/validate.ts`, `src/extension.ts` | The glue to the editor: the setting, the process, the command, the Problems panel. `test/integration/` runs it inside VS Code on `test/fixtures/workspace/`. |
 | `dist/extension.js` | The esbuild bundle that ships. `out/` is the TypeScript output the tests run. Neither is committed. |
 | `.github/workflows/ci.yml` | Checks, tests on three operating systems, the `.vsix` artifact, and the one gate job `CI Passed`. |
-| `.github/workflows/release.yml` | On a `v*` tag: the `.vsix` on a GitHub pre-release. |
+| `.github/workflows/release.yml` | On a `v*` tag on `main`: the `.vsix`, its `SHA256SUMS`, and a build provenance attestation on a GitHub pre-release. The build job holds no write permission. |
+| `.github/workflows/upstream.yml` | Weekly and by hand: the tests against Veridelta `main` and on VS Code 1.101.0, the `engines` floor. It gates nothing. |
 
 ## Commands
 

@@ -8,15 +8,19 @@
  * configuration's `output_path`, in its `output_format`, and skips an empty set.
  * A run compared where the data is stored writes the keys-only files and a
  * sample instead. The path is relative to the folder the command runs in,
- * which is the configuration's folder. This module imports nothing from VS
- * Code, so its tests run under plain Mocha.
+ * which is the configuration's folder.
+ *
+ * Only the two top-level settings are read, from the document tree as
+ * Veridelta's YAML reader, PyYAML, would see them: the last of duplicate keys
+ * wins, an alias is followed, and `<<` merge keys apply in PyYAML's order,
+ * nested ones included. Nothing is expanded, so a file of nested anchors costs
+ * no more than its text. This module imports nothing from VS Code, so its
+ * tests run under plain Mocha.
  */
 
 import * as path from "node:path";
 
-import { parse } from "yaml";
-
-import { isRecord } from "./output";
+import { isAlias, isMap, isScalar, isSeq, parseDocument, type Document, type YAMLMap } from "yaml";
 
 /** The formats `output_format` accepts. */
 export const FORMATS = ["parquet", "csv", "json", "ndjson", "arrow"] as const;
@@ -47,34 +51,284 @@ export interface ArtifactPlan {
   candidates: string[];
 }
 
+/** The rows each kind of discrepancy file holds, as the run's summary counts them. */
+export interface DifferenceCounts {
+  added: number;
+  removed: number;
+  changed: number;
+}
+
+/**
+ * The candidates a run with these counts can have written, in the order to open them.
+ *
+ * Veridelta skips an empty set, so a file for a kind the run counted none of
+ * is left from an earlier run.
+ */
+export function candidatesFor(plan: ArtifactPlan, counts: DifferenceCounts): string[] {
+  return plan.candidates.filter(
+    (name) =>
+      (name.startsWith("added_rows") && counts.added > 0) ||
+      (name.startsWith("removed_rows") && counts.removed > 0) ||
+      (name.startsWith("changed_rows") && counts.changed > 0),
+  );
+}
+
 function isFormat(value: unknown): value is ArtifactFormat {
   return typeof value === "string" && (FORMATS as readonly string[]).includes(value);
 }
 
+/** When a file was last written and how big it was, enough to tell whether another run rewrote it. */
+export interface FileStamp {
+  mtimeMs: number;
+  size: number;
+}
+
+/** How much older than the run a file it wrote may look, for file systems that keep coarse times. */
+export const CLOCK_SLACK_MS = 2000;
+
+/** Whether a file was written since the run started, allowing for coarse file times. */
+export function writtenSince(stamp: FileStamp, startedAt: number): boolean {
+  return stamp.mtimeMs >= startedAt - CLOCK_SLACK_MS;
+}
+
+/** A file's stamp now, or why there is none: it is not there, or it cannot be checked. */
+export type StampNow = FileStamp | "gone" | "unreadable";
+
+/** Whether a file is still as the run left it; false when it is gone or another run rewrote it. */
+export function unchanged(then: FileStamp, now: StampNow | undefined): boolean {
+  return typeof now === "object" && now.mtimeMs === then.mtimeMs && now.size === then.size;
+}
+
+/** The files a run wrote that are still as it left them, and a note for each one that is not. */
+export interface WrittenNow {
+  current: string[];
+  notes: string[];
+  /** Whether a file could not be checked, so it may still be as the run left it. */
+  unreadable: boolean;
+}
+
 /**
- * Return the plan a configuration implies, or undefined when it names no `output_path`.
+ * Sort the files a run wrote by whether they are still as it left them.
+ *
+ * A later run of the configuration rewrites them, and a person can delete or
+ * edit them, so a note says only what happened to each, not why.
+ *
+ * @param stampNow A file's stamp now, or why there is none.
+ */
+export function writtenNow(
+  written: Record<string, FileStamp>,
+  stampNow: (file: string) => StampNow,
+  paths: path.PlatformPath = path,
+): WrittenNow {
+  const current: string[] = [];
+  const notes: string[] = [];
+  let unreadable = false;
+  for (const [file, stamp] of Object.entries(written)) {
+    const now = stampNow(file);
+    unreadable ||= now === "unreadable";
+    if (unchanged(stamp, now)) {
+      current.push(file);
+    } else {
+      const what =
+        now === "gone"
+          ? "is gone"
+          : now === "unreadable"
+            ? "cannot be read"
+            : "changed after this run wrote it";
+      notes.push(`${paths.basename(file)} ${what}`);
+    }
+  }
+  return { current, notes, unreadable };
+}
+
+/**
+ * Whether a path lies inside a folder, or is the folder.
+ *
+ * @param paths The path functions to use; Windows paths in a test pass `path.win32`.
+ */
+export function isInside(file: string, folder: string, paths: path.PlatformPath = path): boolean {
+  const relative = paths.relative(folder, file);
+  const outside = relative === ".." || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative);
+  return !outside;
+}
+
+/** A node, with one alias followed. */
+function resolved(document: Document, node: unknown): unknown {
+  return isAlias(node) ? node.resolve(document) : node;
+}
+
+/** Whether a key is YAML's merge key: a plain `<<`, or the symbol the YAML 1.1 schema reads it as. */
+function isMergeKey(key: unknown): boolean {
+  if (!isScalar(key)) {
+    return false;
+  }
+  const value: unknown = key.value;
+  return value === "<<" || (typeof value === "symbol" && value.description === "<<");
+}
+
+/**
+ * The mappings one `<<` value merges, in the order PyYAML lays their pairs down.
+ *
+ * A later pair wins, so in a list, whose first mapping wins, the order is reversed.
+ */
+function mergedMaps(document: Document, value: unknown): YAMLMap[] {
+  const node = resolved(document, value);
+  if (isMap(node)) {
+    return [node];
+  }
+  if (isSeq(node)) {
+    return node.items
+      .map((item) => resolved(document, item))
+      .filter((item): item is YAMLMap => isMap(item))
+      .reverse();
+  }
+  return [];
+}
+
+/** No pair sets the key. */
+const MISSING = Symbol("missing");
+
+/** What a lookup of one key has seen: the answer for each mapping done, and whether it met a loop. */
+interface Lookup {
+  done: Map<YAMLMap, unknown>;
+  open: Set<YAMLMap>;
+  looped: boolean;
+}
+
+/**
+ * A key's value node in a mapping, as PyYAML's merge flattening gives it.
+ *
+ * PyYAML lays down the pairs of each merged mapping, itself flattened the
+ * same way, in the order of the `<<` keys, then the mapping's own pairs, and
+ * the last pair with the key wins. So an own pair beats any merge, a later
+ * `<<` beats an earlier one, and the last duplicate wins. Each mapping is
+ * looked at once per key, so repeated aliases cost no more than the text.
+ * A mapping that merges a mapping holding it is a loop: Veridelta main
+ * refuses such a file, and PyYAML flattens it in place, so what a mapping
+ * holds can depend on the way it is reached. The lookup notes any loop it
+ * meets rather than guess.
+ */
+function lookup(document: Document, map: YAMLMap, key: string, seen: Lookup): unknown {
+  if (seen.done.has(map)) {
+    return seen.done.get(map);
+  }
+  if (seen.open.has(map)) {
+    seen.looped = true;
+    return MISSING;
+  }
+  seen.open.add(map);
+  let found: unknown = MISSING;
+  for (const pair of map.items) {
+    if (isMergeKey(pair.key)) {
+      for (const merged of mergedMaps(document, pair.value)) {
+        const value = lookup(document, merged, key, seen);
+        if (value !== MISSING) {
+          found = value;
+        }
+      }
+    }
+  }
+  for (const pair of map.items) {
+    if (!isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key) {
+      found = pair.value;
+    }
+  }
+  seen.open.delete(map);
+  seen.done.set(map, found);
+  return found;
+}
+
+/** A merge loop met while reading a setting, so its value cannot be told. */
+class MergeLoop extends Error {}
+
+/** A top-level setting's value, with merges and aliases followed as Veridelta's YAML reader follows them. */
+function setting(document: Document, map: YAMLMap, key: string): unknown {
+  // The top mapping's own pairs stay last however PyYAML flattens its merges,
+  // loops included, so its last own pair is the answer. Deeper down, a loop can
+  // change what a mapping holds when it is reached a second way, so there the
+  // merges are always followed.
+  const own = map.items.filter(
+    (pair) => !isMergeKey(pair.key) && isScalar(pair.key) && pair.key.value === key,
+  );
+  const last = own.at(-1);
+  if (last !== undefined) {
+    return scalarValue(resolved(document, last.value));
+  }
+  const seen: Lookup = { done: new Map(), open: new Set(), looped: false };
+  const node = lookup(document, map, key, seen);
+  if (node === MISSING) {
+    // Every mapping the merges reach was looked at, so none sets the key.
+    return undefined;
+  }
+  if (seen.looped) {
+    throw new MergeLoop();
+  }
+  return scalarValue(resolved(document, node));
+}
+
+/** A scalar's value, or undefined for a mapping, a list, or nothing. */
+function scalarValue(node: unknown): unknown {
+  return isScalar(node) ? node.value : undefined;
+}
+
+/** What `planArtifacts` found: the plan, and whether the configuration could be read at all. */
+export interface ArtifactRead {
+  /** The plan, or undefined when the configuration names no `output_path` or could not be read. */
+  plan: ArtifactPlan | undefined;
+  /** False when the text is not YAML this reader follows, so the plan is unknown rather than absent. */
+  readable: boolean;
+}
+
+/**
+ * Read where a configuration sends its discrepancy files.
  *
  * @param configText The configuration file's text.
  * @param configFolder The folder the configuration is in, which the run ran in.
  */
-export function artifactPlan(configText: string, configFolder: string): ArtifactPlan | undefined {
-  let config: unknown;
+export function planArtifacts(configText: string, configFolder: string): ArtifactRead {
+  let document: Document;
   try {
-    config = parse(configText);
+    document = parseDocument(configText, { uniqueKeys: false });
   } catch {
-    return undefined;
+    return { plan: undefined, readable: false };
   }
-  if (!isRecord(config) || typeof config.output_path !== "string" || config.output_path.length === 0) {
-    return undefined;
+  if (document.errors.length > 0) {
+    return { plan: undefined, readable: false };
   }
-  const format = config.output_format === undefined ? "parquet" : config.output_format;
+  const root = document.contents;
+  if (!isMap(root)) {
+    return { plan: undefined, readable: true };
+  }
+  let outputPath: unknown;
+  let written: unknown;
+  try {
+    outputPath = setting(document, root, "output_path");
+    written = setting(document, root, "output_format");
+  } catch (error) {
+    if (error instanceof MergeLoop) {
+      return { plan: undefined, readable: false };
+    }
+    throw error;
+  }
+  if (typeof outputPath !== "string" || outputPath.length === 0) {
+    return { plan: undefined, readable: true };
+  }
+  const format = written === undefined ? "parquet" : written;
   if (!isFormat(format)) {
-    return undefined;
+    return { plan: undefined, readable: true };
   }
   return {
-    folder: path.resolve(configFolder, config.output_path),
-    format,
-    textual: TEXT_FORMATS.includes(format),
-    candidates: NAMES.map((name) => `${name}.${format}`),
+    plan: {
+      folder: path.resolve(configFolder, outputPath),
+      format,
+      textual: TEXT_FORMATS.includes(format),
+      candidates: NAMES.map((name) => `${name}.${format}`),
+    },
+    readable: true,
   };
+}
+
+/** Return the plan a configuration implies, or undefined when it names none or cannot be read. */
+export function artifactPlan(configText: string, configFolder: string): ArtifactPlan | undefined {
+  return planArtifacts(configText, configFolder).plan;
 }

@@ -27,7 +27,7 @@ const REPORT = [
 describe("withCsp", () => {
   it("adds the policy after the charset meta and the nonce to the one style and the one script", () => {
     const nonce = "abc123+/=";
-    const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">`;
+    const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none';">`;
     const expected = REPORT.replace(CHARSET, `${CHARSET}\n${policy}`)
       .replace("<style>", `<style nonce="${nonce}">`)
       .replace("<script>", `<script nonce="${nonce}">`);
@@ -45,6 +45,22 @@ describe("withCsp", () => {
       () => withCsp(REPORT.replace("<script>", '<script src="x.js">'), "a"),
       /one <script> element/,
     );
+  });
+
+  it("allows images embedded as data URLs, such as the symbol by the title, and nothing else", () => {
+    const policy = /content="([^"]*)"/.exec(withCsp(REPORT, "abc"))?.[1] ?? "";
+    const directives = policy.split(";").map((directive) => directive.trim());
+    assert.ok(directives.includes("img-src data:"));
+    assert.ok(directives.includes("default-src 'none'"));
+    assert.equal(directives.filter((directive) => directive.startsWith("img-src")).length, 1);
+  });
+
+  it("lets no form send and no base element move the report's links", () => {
+    const policy = /content="([^"]*)"/.exec(withCsp(REPORT, "abc"))?.[1] ?? "";
+    const directives = policy.split(";").map((directive) => directive.trim());
+    // default-src does not cover these two, so each is named.
+    assert.ok(directives.includes("form-action 'none'"));
+    assert.ok(directives.includes("base-uri 'none'"));
   });
 
   it("refuses a nonce that is not base64", () => {

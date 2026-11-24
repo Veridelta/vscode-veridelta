@@ -10,11 +10,11 @@
 
 import * as vscode from "vscode";
 
-import type { ArtifactPlan } from "./artifacts";
 import { pickConfiguration } from "./configPicker";
 import { registerMcpProvider, type VerideltaMcpProvider } from "./mcp";
-import type { Surfaces } from "./notify";
+import { recentNotifications, showInformation, type Surfaces } from "./notify";
 import { openArtifacts, openReportOf, runComparison, type RunOutcome } from "./run";
+import { endAll } from "./spawn";
 import { validateDocument } from "./validate";
 
 /** What `activate` hands back, for tests. */
@@ -22,10 +22,12 @@ export interface Api {
   validateDocument(document: vscode.TextDocument): Promise<vscode.Diagnostic[]>;
   runComparison(uri: vscode.Uri): Promise<RunOutcome | undefined>;
   openReport(outcome: RunOutcome): Promise<vscode.WebviewPanel>;
-  openArtifacts(plan: ArtifactPlan | undefined): Promise<string[]>;
+  openArtifacts(outcome: RunOutcome): Promise<string[]>;
   diagnostics: vscode.DiagnosticCollection;
   /** The provider agent mode asks for the Veridelta server. */
   mcpProvider: VerideltaMcpProvider;
+  /** The notifications shown most recently, oldest first, as the user saw them. */
+  notifications(): readonly string[];
 }
 
 export function activate(context: vscode.ExtensionContext): Api {
@@ -33,16 +35,15 @@ export function activate(context: vscode.ExtensionContext): Api {
     diagnostics: vscode.languages.createDiagnosticCollection("veridelta"),
     output: vscode.window.createOutputChannel("Veridelta"),
   };
-  context.subscriptions.push(surfaces.diagnostics, surfaces.output);
+  // A run or a validate still going when the extension stops ends with it.
+  context.subscriptions.push(surfaces.diagnostics, surfaces.output, { dispose: endAll });
   const mcpProvider = registerMcpProvider(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("veridelta.validate", async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor === undefined) {
-        void vscode.window.showInformationMessage(
-          "Open a Veridelta configuration file, then run the command.",
-        );
+        void showInformation("Open a Veridelta configuration file, then run the command.");
         return;
       }
       await validateDocument(editor.document, surfaces);
@@ -67,6 +68,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     openArtifacts,
     diagnostics: surfaces.diagnostics,
     mcpProvider,
+    notifications: recentNotifications,
   };
 }
 

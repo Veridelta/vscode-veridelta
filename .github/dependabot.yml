@@ -1,0 +1,43 @@
+# Copyright 2026 The Veridelta Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Dependabot moves the npm packages and the pinned actions. VERIDELTA_SPEC in
+# ci.yml names the Veridelta the tests run against, and it is bumped by hand.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # A new release waits a week, so a bad one can be pulled first.
+    cooldown:
+      default-days: 7
+    # Every version is pinned exactly, and an update keeps it exact.
+    versioning-strategy: increase
+    # The title reads "chore(deps): ..." or "chore(deps-dev): ...", its first
+    # word sometimes capitalised, which ci.yml allows for Dependabot.
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      # vsce refuses an @types/vscode newer than engines.vscode, so it moves by
+      # hand with engines.
+      - dependency-name: "@types/vscode"
+      # The build targets node22, so @types/node stays on 22.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # The title reads "ci(deps): ...", its first word sometimes capitalised.
+    commit-message:
+      prefix: ci
+      include: scope

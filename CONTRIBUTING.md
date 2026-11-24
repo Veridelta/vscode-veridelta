@@ -26,7 +26,7 @@ Press F5 in VS Code to run the extension from source in a second window that ope
 ## Release
 
 1. Open a pull request that sets the version with `npm version <version> --no-git-tag-version` and adds a `## v<version> (<date>)` section with one paragraph to `CHANGELOG.md`.
-2. Merge it. The Release workflow tags the merge commit `v<version>`, packages the `.vsix`, and creates a GitHub pre-release with the changelog section as its notes. Until the Marketplace listing exists, the release page is where people install from.
+2. Merge it. The Release workflow tags the merge commit `v<version>`, packages the `.vsix` in a job with no write permission, and creates a GitHub pre-release with the changelog section as its notes, the `.vsix`, its `SHA256SUMS`, and a build provenance attestation. It refuses a tag whose commit is not on `main`. Until the Marketplace listing exists, the release page is where people install from.
 3. A release run that stopped partway is started again by hand from the Actions tab, on its tag.
 
 Versions follow the Marketplace's pre-release convention, `major.ODD.patch`, so `0.1.x` for now.

@@ -30,6 +30,16 @@
   "extensionKind": [
     "workspace"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Veridelta runs the program veridelta.command names, and a workspace's settings can set it."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Veridelta reads configurations and data from files on disk."
+    }
+  },
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -55,6 +65,7 @@
           "default": [
             "veridelta"
           ],
+          "restricted": true,
           "markdownDescription": "The words that run Veridelta. A project that runs it through uv sets `[\"uv\", \"run\", \"veridelta\"]`. The command runs in the configuration file's folder."
         },
         "veridelta.run.htmlMaxRows": {
@@ -69,18 +80,46 @@
         "veridelta.mcp.allowRowValues": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Let the agent's tools return values from the data, as `veridelta mcp --allow-row-values` does. Off, an agent sees counts, columns, and keys only."
+          "scope": "machine",
+          "markdownDescription": "Let the agent's tools return values from the data, as `veridelta mcp --allow-row-values` does. Off, the tools return no rows. With Veridelta 0.42.2, a database error can still quote a value. Only user settings apply, so a workspace's settings cannot turn it on, though a trusted workspace's `veridelta.command` chooses the program the server runs; in a remote window, set it in the Remote settings."
         },
         "veridelta.mcp.allowQueries": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Let a tool run a side's query as written, as `veridelta mcp --allow-queries` does."
+          "scope": "machine",
+          "markdownDescription": "Let a tool run a side's query as written, as `veridelta mcp --allow-queries` does. Only user settings apply, so a workspace's settings cannot turn it on, though a trusted workspace's `veridelta.command` chooses the program the server runs."
+        },
+        "veridelta.mcp.allowHosts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9_-]+(\\.[a-z0-9_-]+)*|\\[[0-9a-f:.]+\\])$",
+            "patternErrorMessage": "A host in lowercase, with no scheme or port, such as db.internal or 10.0.0.5."
+          },
+          "uniqueItems": true,
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "Hosts the agent's tools may connect to, such as a database server, a bucket, or a URL's host, each passed as `veridelta mcp --allow-host`. Write each in lowercase, with no scheme or port. Empty, a tool reads only data on this machine, MotherDuck, Hugging Face, or BigQuery with the server's own credentials, with a Veridelta release after 0.42.2. Only user settings apply, so a workspace's settings cannot widen what the agent reaches, though a trusted workspace's `veridelta.command` chooses the program the server runs; in a remote window, set it in the Remote settings. Veridelta 0.42.2 has no `--allow-host`, and the setting applies from the release after it."
+        },
+        "veridelta.mcp.env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": {},
+          "scope": "machine",
+          "markdownDescription": "Environment variables for the agent's server, which otherwise inherits the editor's whole environment. A string sets a variable, and `null` removes one, such as a variable Veridelta refuses to start with. A `PATH` value is added to the end of the inherited `PATH`. Only user settings apply, and Validate and Run are not affected."
         },
         "veridelta.mcp.maxRows": {
           "type": "integer",
           "default": 50,
           "minimum": 1,
-          "markdownDescription": "The most rows, or value map entries, one tool call returns, as `veridelta mcp --max-rows` sets it."
+          "maximum": 1000,
+          "scope": "machine",
+          "markdownDescription": "The most rows, or value map entries, one tool call returns, as `veridelta mcp --max-rows` sets it, up to 1000. Only user settings apply."
         }
       }
     },
