@@ -21,7 +21,7 @@ import {
   withProgress,
 } from "../../src/notify";
 import type { RunOutcome } from "../../src/run";
-import { extension, fixture, openFixture, workspaceFolder } from "./helpers";
+import { extension, fixture, openFixture, removeFixture, workspaceFolder } from "./helpers";
 
 describe("Veridelta: Run comparison", function () {
   this.timeout(120_000);
@@ -118,7 +118,7 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("opens the discrepancy files a configuration asks for", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
@@ -144,7 +144,7 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("opens no file an earlier run left behind", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const failed = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(failed?.artifacts);
@@ -156,7 +156,7 @@ describe("Veridelta: Run comparison", function () {
 
   it("skips a file older than the run that asks for it", async () => {
     const out = path.join(workspaceFolder().fsPath, "out");
-    fs.rmSync(out, { recursive: true, force: true });
+    await removeFixture(out);
     // A keys-only file an earlier run compared where the data is stored would leave.
     fs.mkdirSync(out);
     const stale = path.join(out, "added_rows_pks_only.csv");
@@ -174,7 +174,7 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("leaves an earlier notification's files closed once a later run replaced them", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const earlier = await api.runComparison(fixture("with_output.yaml"));
     const later = await api.runComparison(fixture("with_output.yaml"));
@@ -185,12 +185,12 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("opens the files it can, and names one that changed after the run", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
     const added = path.join(outcome.artifacts.folder, "added_rows.csv");
-    fs.rmSync(added);
+    await removeFixture(added);
     fs.mkdirSync(added);
     const opened = await api.openArtifacts(outcome);
     assert.deepEqual(
@@ -201,12 +201,12 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("names a folder found at a file's name, and opens the rest", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
     const added = path.join(outcome.artifacts.folder, "added_rows.csv");
-    fs.rmSync(added);
+    await removeFixture(added);
     fs.mkdirSync(added);
     // As if the run had left a folder there, so the check after the stamps runs.
     const { mtimeMs, size } = fs.statSync(added);
@@ -222,11 +222,11 @@ describe("Veridelta: Run comparison", function () {
   });
 
   it("says a file is gone rather than guessing why", async () => {
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
-    fs.rmSync(outcome.artifacts.folder, { recursive: true, force: true });
+    await removeFixture(outcome.artifacts.folder);
     assert.deepEqual(await api.openArtifacts(outcome), []);
     const message = api.notifications().at(-1) ?? "";
     assert.match(message, /added_rows\.csv is gone/);
@@ -237,13 +237,13 @@ describe("Veridelta: Run comparison", function () {
     if (process.platform === "win32") {
       this.skip();
     }
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
     for (const file of Object.keys(outcome.written)) {
       // A link to itself cannot be checked, whoever runs the test.
-      fs.rmSync(file);
+      await removeFixture(file);
       fs.symlinkSync(path.basename(file), file);
     }
     assert.deepEqual(await api.openArtifacts(outcome), []);
@@ -257,7 +257,7 @@ describe("Veridelta: Run comparison", function () {
       // Creating a link needs privileges a Windows runner may not have.
       this.skip();
     }
-    fs.rmSync(path.join(workspaceFolder().fsPath, "out"), { recursive: true, force: true });
+    await removeFixture(path.join(workspaceFolder().fsPath, "out"));
     const api = await extension();
     const outcome = await api.runComparison(fixture("with_output.yaml"));
     assert.ok(outcome?.artifacts);
@@ -268,7 +268,7 @@ describe("Veridelta: Run comparison", function () {
       const target = path.join(outside, "elsewhere.csv");
       fs.writeFileSync(target, "id\n1\n");
       const added = path.join(outcome.artifacts.folder, "added_rows.csv");
-      fs.rmSync(added);
+      await removeFixture(added);
       fs.symlinkSync(target, added);
       const { mtimeMs, size } = fs.statSync(added);
       const opened = await api.openArtifacts({
