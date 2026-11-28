@@ -4,7 +4,9 @@ Validate a [Veridelta](https://veridelta.github.io/veridelta/) configuration, ru
 
 ## Install
 
-The extension is not on the Marketplace yet. Download `vscode-veridelta-<version>.vsix` from the newest release on the [Releases page](https://github.com/Veridelta/vscode-veridelta/releases) and install it:
+In Cursor, VSCodium, Windsurf, and other editors that install from [Open VSX](https://open-vsx.org/), search for "Veridelta" in the Extensions view.
+
+In VS Code, the extension is not on the Marketplace yet. Download `vscode-veridelta-<version>.vsix` from the newest release on the [Releases page](https://github.com/Veridelta/vscode-veridelta/releases) and install it:
 
 ```sh
 code --install-extension vscode-veridelta-<version>.vsix

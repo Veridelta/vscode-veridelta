@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.3 (2026-11-28)
+
+This release hardens the extension after a security review, and readies it for Open VSX
+under the name "Veridelta: Data Diff", with Veridelta's logo as its icon. Error
+notifications break any link in their text, and Veridelta's error also goes to the
+Veridelta output. The agent settings `veridelta.mcp.allowRowValues`,
+`veridelta.mcp.allowQueries`, `veridelta.mcp.maxRows`, and `veridelta.mcp.env` apply from
+user settings only, so values in a workspace's settings are ignored, and `maxRows` is held
+to 1000. The new setting `veridelta.mcp.allowHosts` names the hosts the agent's tools may
+reach, passed only to a Veridelta that takes `--allow-host`, with one warning for
+Veridelta 0.42.2. Agent mode skips missing folders. Validate shows progress and can be
+cancelled, a newer validate of a file replaces an older one, and Cancel ends the whole
+process tree. Each run writes its own report, and the extension keeps the five newest for
+each configuration, none past a week. Open discrepancy files opens only this run's files,
+opens large files, and follows no link out of the workspace. The report's policy also
+allows images embedded as `data:` URLs, and forbids forms and `<base>`. The extension
+declares that it does not run in untrusted or virtual workspaces. Releases attach
+`SHA256SUMS` and a build provenance attestation.
+
 ## v0.1.2 (2026-10-11)
 
 The extension registers `veridelta mcp` with VS Code's agent mode: one server, Veridelta,
