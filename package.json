@@ -1,10 +1,11 @@
 {
   "name": "vscode-veridelta",
-  "displayName": "Veridelta",
-  "description": "Validate a Veridelta configuration into the Problems panel, run a comparison and open its report, and register veridelta mcp with agent mode.",
-  "version": "0.1.2",
+  "displayName": "Veridelta: Data Diff",
+  "description": "Compare two datasets from the editor: validate a Veridelta configuration into the Problems panel, run a comparison and open its report, and give agent mode Veridelta's tools.",
+  "version": "0.1.3",
   "publisher": "veridelta",
   "license": "Apache-2.0",
+  "icon": "images/icon.png",
   "homepage": "https://veridelta.github.io/veridelta/",
   "repository": {
     "type": "git",
@@ -25,7 +26,10 @@
     "data",
     "reconciliation",
     "yaml",
-    "validation"
+    "validation",
+    "data diff",
+    "data comparison",
+    "compare csv"
   ],
   "extensionKind": [
     "workspace"
